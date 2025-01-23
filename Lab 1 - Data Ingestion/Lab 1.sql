@@ -54,4 +54,5 @@
 
 -- COMMAND ----------
 
-
+-- MAGIC %md
+-- MAGIC ## End of Lab 1
