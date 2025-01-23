@@ -43,8 +43,12 @@
 -- MAGIC Then complete the notebooks in this order
 -- MAGIC * Bronze Ingest Provider Reviews
 -- MAGIC * Bronze Ingest TMSIS
+-- MAGIC
+-- MAGIC ####With the bronze layer built next build the silver layer
 -- MAGIC * Silver Clean Providers
 -- MAGIC * Silver Clean TMSIS
+-- MAGIC
+-- MAGIC ####Finally build the gold layer
 -- MAGIC * Gold - TMSIS Monthtly Summary
 -- MAGIC * Gold Aggregate Provider Claims
 

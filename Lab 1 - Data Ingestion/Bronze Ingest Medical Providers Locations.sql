@@ -10,10 +10,10 @@
 -- MAGIC 3. **Create a New Table**: Create a new table in the bronze layer to store the cleaned medical center data.
 -- MAGIC
 -- MAGIC ## Outline
--- MAGIC 1. **Lab 1: Ingest Medical Center Locations**
+-- MAGIC 1. **Step 1: Ingest Medical Center Locations**
 -- MAGIC    - Import the medical center data into Databricks.
 -- MAGIC    - Preview the imported data to understand its structure and content.
--- MAGIC 2. **Lab 2: Data Transformation**
+-- MAGIC 2. **Step 2: Data Transformation**
 -- MAGIC    - Select all columns from the imported data.
 -- MAGIC    - Replace spaces in column names with underscores.
 -- MAGIC    - Create a new table called `bronze.medical_providers` to store the transformed data.
