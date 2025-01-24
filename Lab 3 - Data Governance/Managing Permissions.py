@@ -2648,6 +2648,23 @@ AADAUyhDAAAAAACAp1CGAAAAAAAAT6EMAQAAAAAAnkIZAgAAAAAAPIUyBAAAAAAAeAplCAAAAAAA
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Lab 3: Managing Data Permissions
+# MAGIC
+# MAGIC Welcome to the Managing Permissions Lab. In this lab we will learn about managing object permissions.
+# MAGIC
+# MAGIC For this lab it is fine to run all the cells at once. Only images will be displayed.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC Permissions in Unity Catalog cascade down to lower levels. For example granting SELECT on the catalog will grant SELECT on all schemas and tables in the catalog.
+# MAGIC
+# MAGIC Start by clicking on Catalog on the left menu sidebar
+
+# COMMAND ----------
+
 from IPython import display
 from base64 import b64decode
 
@@ -2655,11 +2672,33 @@ display.Image(b64decode(img1))
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC Select your catalog and then the Permissions tab then click on the Grant button
+
+# COMMAND ----------
+
 display.Image(b64decode(img2))
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC We are going to grant three privileges to all users. 
+# MAGIC
+# MAGIC - Use Permission is required for users to be able to access the catalog or schema, regardless if they have permissions on objects in the catalog.
+# MAGIC - Select will provide a READ ONLY permission to the object.
+# MAGIC
+# MAGIC This will enable all users to have READ ONLY permissions to all the tables in the catalog. By granting permissions at the catalog or schema level is generally easier than managing permissions on hundreds or more of individual tables and views.
+# MAGIC
+# MAGIC Complete the form as shown below
+
+# COMMAND ----------
+
 display.Image(b64decode(img3))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ####Congratulations on Completing the Notebook
 
 # COMMAND ----------
 
