@@ -32,7 +32,7 @@
 
 # COMMAND ----------
 
-df = spark.read.json("/Volumes/quickstart_catalog/quickstart_schema/ext/tmsis_claims/")
+df = spark.read.json("/Volumes/main/default/tmsis_claims/")
 display(df)
 
 # COMMAND ----------
