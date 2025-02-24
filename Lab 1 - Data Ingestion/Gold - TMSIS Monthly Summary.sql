@@ -34,7 +34,7 @@ SELECT
   DATE_TRUNC('day', DSCHRG_DT) AS discharge_date, 
   ROUND(SUM(tot_mdcd_pd_amt),0) AS total_amount
 FROM 
-  scott_dev.silver.tmsis_claims
+  silver.tmsis_claims
 WHERE DSCHRG_DT IS NOT NULL
 GROUP BY 
  discharge_date

@@ -47,7 +47,7 @@ display(df)
 # MAGIC create or replace table bronze.tmsis_claims
 # MAGIC as
 # MAGIC select *
-# MAGIC from json.`/Volumes/quickstart_catalog/quickstart_schema/ext/tmsis_claims/`
+# MAGIC from json.`/Volumes/main/default/tmsis_claims/`
 
 # COMMAND ----------
 
