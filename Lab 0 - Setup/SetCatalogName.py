@@ -8,8 +8,7 @@ if ctlg in [catalog.name for catalog in spark.catalog.listCatalogs()]:
   print(f"Setting Catalog to {ctlg}")
   spark.sql(f"use catalog {ctlg}")
 else:
-  print(f"Catalog {ctlg} does not exist")
-
+  print(f"Catalog {ctlg} does not exist.")
 
 
 # COMMAND ----------
