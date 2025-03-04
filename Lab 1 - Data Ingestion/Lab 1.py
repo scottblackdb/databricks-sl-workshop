@@ -2,6 +2,9 @@
 # MAGIC %md
 # MAGIC # Data Engineering Lab 1: Building a Modern Data Pipeline with Databricks Medallion Architecture
 # MAGIC
+# MAGIC ## Setting the table
+# MAGIC The first step in any data project is getting access to the data. Your first task in evaluating Databricks is how to ingest data. The major data sources used in the department are tradiontal RDBMS, JSON files and making REST calls.
+# MAGIC
 # MAGIC ## Overview
 # MAGIC
 # MAGIC In this hands-on workshop, you'll learn how to implement a robust data pipeline using Databricks' medallion architecture - a multi-layered data organization framework that helps ensure data quality, reliability, and usability at scale. The medallion architecture, also known as "multi-hop" architecture, consists of bronze (raw), silver (validated), and gold (enriched) layers that progressively refine and transform data.
@@ -11,6 +14,7 @@
 # MAGIC By the end of this lab, you will:
 # MAGIC
 # MAGIC * Understand the core principles and benefits of the medallion architecture
+# MAGIC * Ingest data from a variety of data sources including databases, files and APIs
 # MAGIC * Build data pipelines that move data through bronze, silver, and gold layers
 # MAGIC * Implement data transformation
 # MAGIC * Create optimized tables for downstream analytics and ML workloads
