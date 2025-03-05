@@ -22,9 +22,9 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Using pandas make a Rest call to the data source. Databricks provides common Python libraries including Pandas so often there is no need for users to spend time installing libraries.
+# MAGIC For the first step we will use pandas to make a Rest call to the data source. Databricks provides common Python libraries including Pandas so often there is no need for users to spend time installing libraries.
 # MAGIC
-# MAGIC The data is returned to pandas which is directly used to create a Spark dataframe. The dataframe is then display.
+# MAGIC The data is returned to pandas which is directly used to create a Spark dataframe then dataframe is displayed.
 
 # COMMAND ----------
 
