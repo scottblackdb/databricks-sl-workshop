@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Lab 2: Ingest Provider Reviews
+# MAGIC # Lab 1: Ingest Provider Reviews
 # MAGIC
 # MAGIC In this lab you will ingest medical provider reivews from a Rest API into the bronze layer.
 # MAGIC
