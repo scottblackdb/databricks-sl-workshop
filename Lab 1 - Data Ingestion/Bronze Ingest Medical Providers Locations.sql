@@ -2,7 +2,9 @@
 -- MAGIC %md
 -- MAGIC # Lab 1: Ingesting and Processing Medical Center Data with Databricks
 -- MAGIC
--- MAGIC Welcome to the Databricks Lab 1! In this notebook, we will guide you through the process of ingesting and processing medical center data using Databricks. This lab is designed for users with no prior experience with Databricks. 
+-- MAGIC Welcome to the Databricks Lab 1! In this notebook, we will guide you through the process of ingesting and processing medical center data using Databricks. This lab is designed for users with no prior experience with Databricks.
+-- MAGIC <br>
+-- MAGIC The department maintains t 
 -- MAGIC
 -- MAGIC ## Objectives
 -- MAGIC 1. **Ingest Medical Center Locations**: Learn how to import and preview medical center data from SQL Server using Lakehouse Federation.
