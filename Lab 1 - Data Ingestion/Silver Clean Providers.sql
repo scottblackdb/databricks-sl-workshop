@@ -57,7 +57,7 @@ from bronze.provider_reviews
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC With provider reviews patients are able to give a yes or no recommendation as well as free form text response. It has been noticed that patients may recommend a provider but their free form text response can be negitave in tone. We have been asked to identify these types of instances. Instead of having to manually read every comment we can use GenAI. Using the ai_analyze_sentiment function the text can be analyzed and assigned an overall sentiment. 
+-- MAGIC With provider reviews patients are able to give a yes or no recommendation as well as free form text response. It has been noticed that patients may recommend a provider but their free form text response can be negative in tone. We have been asked to identify these types of instances. Instead of having to manually read every comment we can use GenAI. Using the `ai_analyze_sentiment` function the text can be analyzed and assigned an overall sentiment. There are many Gen AI functions and more information about them are [here](https://docs.databricks.com/aws/en/large-language-models/ai-functions).
 
 -- COMMAND ----------
 
@@ -85,6 +85,7 @@ from rated_reviews
 create or replace table silver.medical_providers
 as
 select *
+--Finish the SQL statement
 
 -- COMMAND ----------
 
