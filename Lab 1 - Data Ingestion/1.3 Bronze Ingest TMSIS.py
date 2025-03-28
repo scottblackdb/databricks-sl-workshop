@@ -38,7 +38,7 @@ display(df)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Create or replace a table in the bronze table with the data from the JSON files.
+# MAGIC Create or replace a table in the bronze schema with the data from the JSON files. Notice the `json` keyword in the FROM clause. By using the source format of the data, in this case JSON it is possible to query data using SQL without first loading the data into a database!
 
 # COMMAND ----------
 

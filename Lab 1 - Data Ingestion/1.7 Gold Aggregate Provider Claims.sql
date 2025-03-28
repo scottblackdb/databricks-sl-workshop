@@ -46,7 +46,7 @@ group by rating
 -- MAGIC Using the temporary view we can use builtin Databricks AI functions.
 -- MAGIC
 -- MAGIC Databricks AI functions allow users to leverage generative AI directly in SQL queries. Tasks including sentiment analysis, text classiication and translation. There is also open ended function that allows users to customize the prompt opening endless possiblities.
--- MAGIC In this case we will use ai_summarize function to extract the key topics from all the reviews.
+-- MAGIC In this case we will use `ai_summarize` function to extract the key topics from all the reviews.
 
 -- COMMAND ----------
 

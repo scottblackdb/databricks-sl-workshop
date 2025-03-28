@@ -63,7 +63,7 @@ AS SELECT * FROM medicaid_providers.dbo.medicaid_providers
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC In the next cell is what the output should be. Run this query to create a bronze table by select all the data from the SQL Server. 
+-- MAGIC In the next cell is what the output from the assistant should be. Run this query to create a bronze table by select all the data from the SQL Server. 
 
 -- COMMAND ----------
 
@@ -94,32 +94,3 @@ FROM medicaid_providers.dbo.medicaid_providers
 
 -- MAGIC %md
 -- MAGIC ####Congratulations on Completing the Notebook
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC
--- MAGIC ```sql 
--- MAGIC CREATE OR REPLACE TABLE bronze.medical_providers AS
--- MAGIC SELECT
--- MAGIC   `MEDICAID PROVIDER ID` AS MEDICAID_PROVIDER_ID,
--- MAGIC   NPI,
--- MAGIC   `PROVIDER OR FACILITY NAME` AS PROVIDER_OR_FACILITY_NAME,
--- MAGIC   `MEDICAID TYPE` AS MEDICAID_TYPE,
--- MAGIC   `PROFESSION OR SERVICE` AS PROFESSION_OR_SERVICE,
--- MAGIC   `PROVIDER SPECIALTY` AS PROVIDER_SPECIALTY,
--- MAGIC   `SERVICE ADDRESS` AS SERVICE_ADDRESS,
--- MAGIC   CITY,
--- MAGIC   STATE,
--- MAGIC   `ZIP CODE` AS ZIP_CODE,
--- MAGIC   COUNTY,
--- MAGIC   TELEPHONE,
--- MAGIC   LATITUDE,
--- MAGIC   LONGITUDE,
--- MAGIC   `ENROLLMENT BEGIN DATE` AS ENROLLMENT_BEGIN_DATE, 
--- MAGIC   `NEXT ANTICIPATED REVALIDATION DATE` AS NEXT_ANTICIPATED_REVALIDATION_DATE, 
--- MAGIC   `FILE DATE` AS FILE_DATE, 
--- MAGIC   `MEDICALLY FRAGILE CHILDREN AND ADULTS DIRECTORY IND` AS MEDICALLY_FRAGILE_CHILDREN_AND_ADULTS_DIRECTORY_IND, 
--- MAGIC   `PROVIDER EMAIL` AS PROVIDER_EMAIL
--- MAGIC FROM medicaid_providers.dbo.medicaid_providers
--- MAGIC ```
