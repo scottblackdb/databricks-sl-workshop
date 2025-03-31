@@ -45,17 +45,17 @@ procedures = [
 
 # Generate 100 records
 claims_data = []
-base_date = datetime(2023, 12, 1)
+base_date = datetime(2023, 1, 1)
 end_date = datetime(2024, 1, 2)
 
-for i in range(100000):
+for i in range(150000):
     service_date = generate_date(base_date, end_date)
     
     # Determine if inpatient stay
     is_inpatient = random.random() < 0.15  # 15% chance of inpatient
     
     if is_inpatient:
-        length_of_stay = random.randint(1, 7)
+        length_of_stay = random.randint(1, 14)
         admission_dt = service_date
         discharge_dt = service_date + timedelta(days=length_of_stay)
         service_end_date = discharge_dt
@@ -118,9 +118,11 @@ for key, value in claims_data[0].items():
 
 # COMMAND ----------
 
-df = spark.createDataFrame(claims_data)
+import pandas as pd
 
-df.write.mode("overwrite").format("json").save("abfss://filedrops@scottblackadls.dfs.core.windows.net/json_files/tmsis_claims/")
+df = spark.createDataFrame(pd.DataFrame(claims_data))
+
+df.coalesce(1).write.mode("overwrite").format("json").save("abfss://filedrops@scottblackadls.dfs.core.windows.net/json_files/tmsis_claims/")
 
 # COMMAND ----------
 
@@ -129,12 +131,21 @@ import pandas as pd
 df = pd.DataFrame(claims_data)
 display(df)
 
-df.to_json("/Volumes/quickstart_catalog/quickstart_schema/ext/tmsis_claims.json")
+df.to_json("/Volumes/quickstart_catalog/quickstart_schema/ext/tmsis_claims.json", orient="records")
 
 # COMMAND ----------
 
 df1 = spark.createDataFrame(df)
 display(df1)
+
+# COMMAND ----------
+
+display(spark.read.json("/Volumes/quickstart_catalog/quickstart_schema/ext/tmsis_claims.json"))
+
+
+# COMMAND ----------
+
+dbutils.fs.ls("abfss://filedrops@scottblackadls.dfs.core.windows.net/json_files/tmsis_claims/")
 
 # COMMAND ----------
 
