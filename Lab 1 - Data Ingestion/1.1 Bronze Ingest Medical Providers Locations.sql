@@ -4,10 +4,10 @@
 -- MAGIC
 -- MAGIC Welcome to the Databricks Lab 1! In this notebook, we will guide you through the process of ingesting and processing medical center data using Databricks. This lab is designed for users with no prior experience with Databricks.
 -- MAGIC <br>
--- MAGIC The department maintains t 
+-- MAGIC  
 -- MAGIC
 -- MAGIC ## Objectives
--- MAGIC 1. **Ingest Medical Center Locations**: Learn how to import and preview medical center data from SQL Server using Lakehouse Federation.
+-- MAGIC 1. **Ingest Medical Center Locations**: Learn how to import and preview medical center data from a different Databricks enviroment using Delta Sharing.
 -- MAGIC 2. **Data Transformation**: Understand how to transform the metadata by replacing spaces in column names with underscores.
 -- MAGIC 3. **Create a New Table**: Create a new table in the bronze layer to store the cleaned medical center data.
 -- MAGIC
@@ -37,58 +37,32 @@
 -- MAGIC %md
 -- MAGIC ####Preview Medical Center Data
 -- MAGIC
--- MAGIC Databricks Lakehouse Federation allows seamless access to data across various sources without users needing to know anything about the data source. It provides a unified interface to query and analyze data stored in different systems, making the process of accessing foreign tables transparent to the user. This means users can interact with external data sources as if they were native tables within Databricks, simplifying data integration and analysis workflows.
+-- MAGIC Delta Sharing is an open protocol for secure data sharing across organizations, enabling users to access shared data in real time without data replication.
 -- MAGIC
--- MAGIC In a SQL Server database is a table that contains information about medical providers that will be the source of the data pipeline. However there are spaces in the colum names and this could cause the next two cells to fail.
+-- MAGIC Users are able to access data provided by the delta share without knowing any of the connection details. Administrators can manage access to the data as if it was in their local Databricks enviroment.
+-- MAGIC
+-- MAGIC In the following sections you will explore the medical provider data and ETL the data into your enviroment.
+-- MAGIC
+-- MAGIC The following SQL command displays the data coming from a Delta Share. Notice there is no additional work required by the users to query remote data.
 
 -- COMMAND ----------
 
-select * from medicaid_providers.dbo.medicaid_providers
-
--- COMMAND ----------
-
-CREATE OR REPLACE TABLE bronze.medical_providers
-AS SELECT * FROM medicaid_providers.dbo.medicaid_providers
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC The solution is to replace spaces with underscores. One method is to manually type the SQL however another and faster way is to use the Databricks Assistant. Copy the prompt in the following cell to the Databricks Assistant. The output should be a SQL query which replaces spaces with underscores.
+select * from medical_providers.default.medical_providers
 
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ```select all the columns from medicaid_providers.dbo.medicaid_providers replace spaces in the column names with underscore and create a new table called bronze.medical_providers```
+-- MAGIC
+-- MAGIC We want to create a local copy of the data. You can create SQL code yourself or use the Databricks Assistant. In the top right corner click on the multi-color diamond and enter this prompt.
+-- MAGIC
+-- MAGIC ```copy the data from medical_providers.default.medical_providers into a new table called bronze.medical_providers```
+-- MAGIC
+-- MAGIC A new cell with the code to copy the data into a new table should be created.
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC In the next cell is what the output from the assistant should be. Run this query to create a bronze table by select all the data from the SQL Server. 
-
--- COMMAND ----------
-
-CREATE OR REPLACE TABLE bronze.medical_providers AS
-SELECT 
-  `MEDICAID PROVIDER ID` AS MEDICAID_PROVIDER_ID, 
-  NPI, 
-  `PROVIDER OR FACILITY NAME` AS PROVIDER_OR_FACILITY_NAME, 
-  `MEDICAID TYPE` AS MEDICAID_TYPE, 
-  `PROFESSION OR SERVICE` AS PROFESSION_OR_SERVICE, 
-  `PROVIDER SPECIALTY` AS PROVIDER_SPECIALTY, 
-  `SERVICE ADDRESS` AS SERVICE_ADDRESS, 
-  CITY, 
-  STATE, 
-  `ZIP CODE` AS ZIP_CODE, 
-  COUNTY, 
-  TELEPHONE, 
-  LATITUDE, 
-  LONGITUDE, 
-  `ENROLLMENT BEGIN DATE` AS ENROLLMENT_BEGIN_DATE, 
-  `NEXT ANTICIPATED REVALIDATION DATE` AS NEXT_ANTICIPATED_REVALIDATION_DATE, 
-  `FILE DATE` AS FILE_DATE, 
-  `MEDICALLY FRAGILE CHILDREN AND ADULTS DIRECTORY IND` AS MEDICALLY_FRAGILE_CHILDREN_AND_ADULTS_DIRECTORY_IND, 
-  `PROVIDER EMAIL` AS PROVIDER_EMAIL
-FROM medicaid_providers.dbo.medicaid_providers
+create or replace table bronze.medical_providers as
+select * from medical_providers.default.medical_providers
 
 -- COMMAND ----------
 
