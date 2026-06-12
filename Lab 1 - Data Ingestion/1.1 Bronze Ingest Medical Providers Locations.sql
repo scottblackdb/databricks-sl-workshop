@@ -47,7 +47,7 @@
 
 -- COMMAND ----------
 
-select * from medical_providers.default.medical_providers
+select * from medical_providers.dbo.medical_providers
 
 -- COMMAND ----------
 
@@ -62,7 +62,7 @@ select * from medical_providers.default.medical_providers
 -- COMMAND ----------
 
 create or replace table bronze.medical_providers as
-select * from medical_providers.default.medical_providers
+select * from medical_providers.dbo.medical_providers
 
 -- COMMAND ----------
 
