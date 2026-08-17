@@ -26,6 +26,19 @@
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC #### Install Prophet
+# MAGIC Prophet is a forecasting library that works well for daily business metrics with trend and weekly seasonality.
+# MAGIC
+# MAGIC Note: The next cell restarts the Python process. After it finishes, continue from the following cell (or click Run all again). Do this once per session.
+
+# COMMAND ----------
+
+# MAGIC %pip install prophet --quiet
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC #### Setup
 # MAGIC Set your default catalog (`{username}_dev`).
 
@@ -47,31 +60,25 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC #### Install Prophet
-# MAGIC Prophet is a forecasting library that works well for daily business metrics with trend and weekly seasonality.
-# MAGIC
-# MAGIC **Note:** The next cell restarts the Python process. After it finishes, continue from the following cell (or click **Run all** again). Do this once per session.
-
-# COMMAND ----------
-
-# MAGIC %pip install prophet --quiet
-# MAGIC dbutils.library.restartPython()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC #### Continue here after the Python restart
-# MAGIC Re-set your catalog, then load data and train the model.
-
-# COMMAND ----------
-
-# MAGIC %run "../Lab 0 - Setup/SetCatalogName"
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC #### Load history into pandas
-# MAGIC Spark reads the Unity Catalog table; pandas is used for the forecasting API.
+# MAGIC Spark reads the Unity Catalog table; pandas is used for the forecasting API. Prophet can't work directly with Spark dataframes so Spark will be used to read the data and then convert into a pandas dataframe.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Explanation of the Python Code
+# MAGIC
+# MAGIC This code loads historical billing data from the Unity Catalog table `gold.tmsis_daily_billing_summary` into a pandas DataFrame for time series forecasting.
+# MAGIC
+# MAGIC - `import pandas as pd`: Imports the pandas library for data manipulation.
+# MAGIC - `spark.table(...).orderBy(...).toPandas()`: Reads the Spark table, orders by `discharge_date`, and converts it to a pandas DataFrame.
+# MAGIC - `pd.to_datetime(...)`: Ensures the `discharge_date` column is in datetime format.
+# MAGIC - `dropna(...)`: Removes rows with missing values in `discharge_date` or `total_amount`.
+# MAGIC - `sort_values(...).reset_index(...)`: Sorts the DataFrame by date and resets the index.
+# MAGIC - `display(history_pdf.tail(10))`: Shows the last 10 rows for inspection.
+# MAGIC - `print(...)`: Outputs the number of training rows and the date range covered by the data.
+# MAGIC
+# MAGIC This prepares clean, ordered daily payment data for model training and forecasting.
 
 # COMMAND ----------
 
