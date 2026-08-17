@@ -7,7 +7,7 @@
 -- MAGIC  
 -- MAGIC
 -- MAGIC ## Objectives
--- MAGIC 1. **Ingest Medical Center Locations**: Learn how to import and preview medical center data from a different Databricks enviroment using Delta Sharing.
+-- MAGIC 1. **Ingest Medical Center Locations**: Learn how to import and preview medical center data from Lakebase Postgres registered in Unity Catalog.
 -- MAGIC 2. **Data Transformation**: Understand how to transform the metadata by replacing spaces in column names with underscores.
 -- MAGIC 3. **Create a New Table**: Create a new table in the bronze layer to store the cleaned medical center data.
 -- MAGIC
@@ -37,17 +37,17 @@
 -- MAGIC %md
 -- MAGIC ####Preview Medical Center Data
 -- MAGIC
--- MAGIC Delta Sharing is an open protocol for secure data sharing across organizations, enabling users to access shared data in real time without data replication.
+-- MAGIC Lakebase is Databricks' managed Postgres OLTP database. When a Lakebase database is registered in Unity Catalog, its schemas and tables appear alongside lakehouse tables and can be queried with Databricks SQL.
 -- MAGIC
--- MAGIC Users are able to access data provided by the delta share without knowing any of the connection details. Administrators can manage access to the data as if it was in their local Databricks enviroment.
+-- MAGIC The workshop setup creates a Lakebase project, loads provider data into the `databricks_postgres` database (`public.medical_providers`), and registers that database as the Unity Catalog catalog `medical_providers`.
 -- MAGIC
--- MAGIC In the following sections you will explore the medical provider data and ETL the data into your enviroment.
+-- MAGIC Users can query the Lakebase table through Unity Catalog without managing a separate Postgres connection. Use a **Serverless** SQL warehouse when querying Lakebase catalogs.
 -- MAGIC
--- MAGIC The following SQL command displays the data coming from a Delta Share. Notice there is no additional work required by the users to query remote data.
+-- MAGIC The following SQL command displays the medical provider data from Lakebase. Notice there is no additional work required by the users to query the data.
 
 -- COMMAND ----------
 
-select * from medical_providers.dbo.medical_providers
+select * from medical_providers.public.medical_providers
 
 -- COMMAND ----------
 
@@ -55,14 +55,14 @@ select * from medical_providers.dbo.medical_providers
 -- MAGIC
 -- MAGIC We want to create a local copy of the data. You can create SQL code yourself or use the Databricks Assistant. In the top right corner click on the multi-color diamond and enter this prompt.
 -- MAGIC
--- MAGIC ```copy the data from medical_providers.default.medical_providers into a new table called bronze.medical_providers```
+-- MAGIC ```copy the data from medical_providers.public.medical_providers into a new table called bronze.medical_providers```
 -- MAGIC
 -- MAGIC A new cell with the code to copy the data into a new table should be created.
 
 -- COMMAND ----------
 
 create or replace table bronze.medical_providers as
-select * from medical_providers.dbo.medical_providers
+select * from medical_providers.public.medical_providers
 
 -- COMMAND ----------
 

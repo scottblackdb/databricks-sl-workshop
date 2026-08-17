@@ -39,7 +39,7 @@
 # MAGIC <br>
 # MAGIC
 # MAGIC ## Environment
-# MAGIC * Ingest data from three sources, SQL Server, JSON files and Rest API into bronze layer
+# MAGIC * Ingest data from three sources, Lakebase Postgres, JSON files and Rest API into bronze layer
 # MAGIC * Transform data to create silver layer
 # MAGIC * Create aggregate data source in the gold layer
 # MAGIC * All labs will leverage serverless compute
