@@ -38,6 +38,17 @@ display(df)
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### A Quick Look at Databricks Performance
+# MAGIC
+# MAGIC Before we write this data to a table, let's see how many rows we're actually dealing with. TMSIS claims files can easily contain millions of records, but Databricks' distributed engine makes counting and processing datasets like this feel effortless.
+
+# COMMAND ----------
+
+df.count()
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC Create or replace a table in the bronze schema with the data from the JSON files. Notice the `json` keyword in the FROM clause. By using the source format of the data, in this case JSON it is possible to query data using SQL without first loading the data into a database!
 
 # COMMAND ----------
@@ -48,6 +59,11 @@ display(df)
 # MAGIC as
 # MAGIC select *
 # MAGIC from json.`/Volumes/main/default/tmsis_claims/`
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Take a look at the duration of the cell above (shown just below the cell once it finishes running). Despite reading, parsing, and writing every row from the row count you saw earlier, Databricks completed the entire operation in a matter of seconds. This is the power of Databricks' distributed compute — it scales effortlessly to handle large datasets, so the same code you just ran would work just as well on millions or even billions of rows.
 
 # COMMAND ----------
 
