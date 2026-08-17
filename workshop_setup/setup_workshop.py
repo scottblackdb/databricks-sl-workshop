@@ -23,6 +23,7 @@ Requires: databricks-sdk, boto3, psycopg, pyarrow  (pip install -r requirements.
 from __future__ import annotations
 
 import argparse
+import base64
 import configparser
 import csv
 import io
@@ -68,6 +69,7 @@ try:
         ExecuteStatementRequestOnWaitTimeout,
         StatementState,
     )
+    from databricks.sdk.service.workspace import ImportFormat
 except ImportError:
     print("Error: databricks-sdk is required.  pip install databricks-sdk")
     sys.exit(1)
@@ -76,6 +78,8 @@ except ImportError:
 # Shared catalog used by Lab 1.3: /Volumes/main/default/tmsis_claims/
 DEFAULT_SHARED_CATALOG = "main"
 DEFAULT_SHARED_SCHEMA = "default"
+WORKSHOP_REPO_URL = "https://github.com/scottblackdb/databricks-sl-workshop"
+WORKSHOP_REPO_WORKSPACE_PATH = "/Shared/workshop_repo.txt"
 DEFAULT_TMSIS_VOLUME = "tmsis_claims"
 DEFAULT_TMSIS_FILE = "tmsis_claims.json"
 DEFAULT_TMSIS_LOCAL_PATH = Path(__file__).resolve().parent / DEFAULT_TMSIS_FILE
@@ -644,7 +648,7 @@ def setup_lakebase_workshop_source(
 
 def user_catalog_name(email: str) -> str:
     """Match Lab 0 SetCatalogName.py: local-part with dots removed + ``_dev``."""
-    local_part = email.split("@", 1)[0]
+    local_part = re.split(r"[@+]", email, 1)[0]
     slug = re.sub(r"\.", "", local_part).lower()
     slug = re.sub(r"[^a-z0-9_-]", "-", slug).strip("-")
     if not slug:
@@ -1238,6 +1242,20 @@ def _upload_tmsis_claims_json(
         sys.exit(1)
 
 
+def _upload_workshop_repo_link(w: WorkspaceClient) -> None:
+    """Write a text file with the workshop repo URL into the workspace Shared folder."""
+    try:
+        w.workspace.import_(
+            WORKSHOP_REPO_WORKSPACE_PATH,
+            content=base64.b64encode(f"{WORKSHOP_REPO_URL}\n".encode()).decode(),
+            format=ImportFormat.AUTO,
+            overwrite=True,
+        )
+        print(f"  [+] wrote workshop repo link to '{WORKSHOP_REPO_WORKSPACE_PATH}'")
+    except Exception as e:
+        print(f"  [!] write workshop repo link to '{WORKSHOP_REPO_WORKSPACE_PATH}' — {e}")
+
+
 def create_shared_main_catalog(
     w: WorkspaceClient,
     *,
@@ -1297,6 +1315,8 @@ def create_shared_main_catalog(
         )
     else:
         print(f"  [~] skipped TMSIS upload for volume '{full_volume}'")
+
+    _upload_workshop_repo_link(w)
 
 
 def _managed_location_for_catalog(
@@ -1674,8 +1694,8 @@ Prerequisites:
     else:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
         create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
         provision_users(w, args.users_file)
+        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
 
     print("\nWorkshop setup complete.")
 

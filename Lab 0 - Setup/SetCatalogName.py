@@ -1,5 +1,5 @@
 # Databricks notebook source
-ctlg = spark.sql("SELECT regexp_replace(regexp_extract(current_user(), '([^@]+)', 1), '\\\\.', '') as name").collect()[0][0]
+ctlg = spark.sql("SELECT regexp_replace(regexp_extract(current_user(), '([^@+]+)', 1), '\\\\.', '') as name").collect()[0][0]
 ctlg = ctlg + "_dev"
 
 # COMMAND ----------
