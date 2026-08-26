@@ -647,10 +647,12 @@ def setup_lakebase_workshop_source(
 
 
 def user_catalog_name(email: str) -> str:
-    """Match Lab 0 SetCatalogName.py: local-part with dots removed + ``_dev``."""
-    local_part = re.split(r"[@+]", email, 1)[0]
+    """Match Lab 0 SetCatalogName.py: local-part with dots removed, any
+    remaining non-alphanumeric char (e.g. hyphens) turned into ``_`` so the
+    result is a valid unquoted UC identifier, then + ``_dev``."""
+    local_part = email.split("@", 1)[0]
     slug = re.sub(r"\.", "", local_part).lower()
-    slug = re.sub(r"[^a-z0-9_-]", "-", slug).strip("-")
+    slug = re.sub(r"[^a-z0-9]", "_", slug).strip("_")
     if not slug:
         slug = "user"
     return f"{slug}_dev"
