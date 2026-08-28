@@ -1333,6 +1333,67 @@ def _managed_location_for_catalog(
     }
 
 
+def _set_owner_if_needed(
+    *,
+    current_owner: str | None,
+    desired_owner: str,
+    update_fn: Callable[[], None],
+    created_msg: str,
+    exists_msg: str,
+    error_label: str,
+) -> None:
+    if current_owner and current_owner.lower() == desired_owner.lower():
+        print(f"  [~] {exists_msg}")
+        return
+    try:
+        update_fn()
+        print(f"  [+] {created_msg}")
+    except Exception as e:
+        print(f"  [!] {error_label} — {e}")
+        sys.exit(1)
+
+
+def _transfer_user_catalog_ownership(
+    w: WorkspaceClient,
+    catalog_name: str,
+    owner_email: str,
+    schemas: tuple[str, ...],
+) -> None:
+    """Make the participant the Unity Catalog owner of their catalog and schemas."""
+    try:
+        catalog = w.catalogs.get(name=catalog_name)
+    except Exception as e:
+        print(f"  [!] could not read catalog '{catalog_name}' to set owner — {e}")
+        sys.exit(1)
+
+    _set_owner_if_needed(
+        current_owner=catalog.owner,
+        desired_owner=owner_email,
+        update_fn=lambda: w.catalogs.update(name=catalog_name, owner=owner_email),
+        created_msg=f"catalog '{catalog_name}' owner set to '{owner_email}'",
+        exists_msg=f"catalog '{catalog_name}' owner already '{owner_email}'",
+        error_label=f"set catalog '{catalog_name}' owner to '{owner_email}'",
+    )
+
+    for schema in schemas:
+        full_name = f"{catalog_name}.{schema}"
+        try:
+            current = w.schemas.get(full_name=full_name)
+        except Exception as e:
+            print(f"  [!] could not read schema '{full_name}' to set owner — {e}")
+            sys.exit(1)
+        _set_owner_if_needed(
+            current_owner=current.owner,
+            desired_owner=owner_email,
+            update_fn=lambda n=full_name: w.schemas.update(
+                full_name=n, owner=owner_email
+            ),
+            created_msg=f"schema '{full_name}' owner set to '{owner_email}'",
+            exists_msg=f"schema '{full_name}' owner already '{owner_email}'",
+            error_label=f"set schema '{full_name}' owner to '{owner_email}'",
+        )
+
+
 def create_user_catalog(
     w: WorkspaceClient,
     email: str,
@@ -1347,6 +1408,7 @@ def create_user_catalog(
         if aws_storage
         else None
     )
+    user_schemas = (DEFAULT_BRONZE_SCHEMA, DEFAULT_SILVER_SCHEMA, DEFAULT_GOLD_SCHEMA)
     _ensure_catalog(
         w,
         catalog_name,
@@ -1356,7 +1418,7 @@ def create_user_catalog(
     _ensure_schemas(
         w,
         catalog_name,
-        (DEFAULT_BRONZE_SCHEMA, DEFAULT_SILVER_SCHEMA, DEFAULT_GOLD_SCHEMA),
+        user_schemas,
     )
     _grant_privileges(
         w,
@@ -1374,6 +1436,7 @@ def create_user_catalog(
         ],
         description=f"participant catalog '{catalog_name}'",
     )
+    _transfer_user_catalog_ownership(w, catalog_name, email, user_schemas)
 
 
 def create_user_catalogs(
