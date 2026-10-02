@@ -8,6 +8,8 @@
 # MAGIC
 # MAGIC In this lab you will build a simple time-series forecast **in a Databricks Python notebook**, using the gold TMSIS daily billing table from Lab 1, and write the results to Unity Catalog so Lab 4 dashboards can use them.
 # MAGIC
+# MAGIC A forecast is also a program-integrity tool: once you know what normal daily spending should look like, days that jump well above the expected line are worth a second look. The same daily billing data drives the fraud and overpayment views you will see on the Lab 4 dashboard.
+# MAGIC
 # MAGIC ## Objectives
 # MAGIC - Review `gold.tmsis_daily_billing_summary`
 # MAGIC - Prepare a daily time series in pandas

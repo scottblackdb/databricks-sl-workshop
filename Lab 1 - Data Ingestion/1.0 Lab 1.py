@@ -6,6 +6,8 @@
 # MAGIC ## Setting the table
 # MAGIC The first step in any data project is getting access to the data. Your first task in evaluating Databricks is how to ingest data. The major data sources used in the department are tradiontal RDBMS, JSON files and making REST calls.
 # MAGIC
+# MAGIC The business goal driving this pipeline is **program integrity**: finding improper payments and potential fraud in the TMSIS Medicaid claims. As you move the claims through the bronze, silver, and gold layers you are getting them ready for a set of fraud "edit checks" — duplicate billing, payments made before the service happened, impossible dates, and outpatient claims paid far above the normal amount. The final gold notebook flags those suspect claims and ranks the riskiest providers for investigators.
+# MAGIC
 # MAGIC <br>
 # MAGIC
 # MAGIC ## Overview
@@ -63,6 +65,7 @@
 # MAGIC ####Finally build the gold layer
 # MAGIC * Gold - TMSIS Monthtly Summary
 # MAGIC * Gold Aggregate Provider Claims
+# MAGIC * Gold - Improper Payment Flags (program integrity: flag likely improper payments and rank risky providers)
 
 # COMMAND ----------
 

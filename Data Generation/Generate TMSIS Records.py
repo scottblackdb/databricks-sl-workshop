@@ -110,6 +110,96 @@ for i in range(150000):
     }
     claims_data.append(claim)
 
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Seed improper-payment / fraud patterns
+# MAGIC The claims above are fully random, so program-integrity and anomaly labs have
+# MAGIC nothing to detect. Here we append a small population (~2%) of records that carry
+# MAGIC recognizable improper-payment signatures. Each pattern is detected by the SQL
+# MAGIC rules in `Lab 1 - Data Ingestion/1.8 Gold - Improper Payment Flags.sql`.
+# MAGIC
+# MAGIC The same logic is available as a standalone, re-runnable script
+# MAGIC (`Data Generation/Inject Improper Payments.py`) that seeds the committed
+# MAGIC `workshop_setup/tmsis_claims.json` directly.
+
+# COMMAND ----------
+
+import copy
+
+DAY = timedelta(days=1)
+SEEDED_ICN_PREFIX = "9900"
+BAD_PROVIDER_NPIS = [f"NPI99900{i:04d}" for i in range(6)]
+_seed_seq = 0
+
+def _seed_clone(src):
+    global _seed_seq
+    rec = copy.deepcopy(src)
+    rec["ICN_NUM"] = f"{SEEDED_ICN_PREFIX}{_seed_seq:09d}"
+    _seed_seq += 1
+    return rec
+
+outpatient = [c for c in claims_data if c["BILL_TYPE_CD"] == "131"]
+inpatient = [c for c in claims_data if c["ADMISSION_DT"] and c["DSCHRG_DT"]]
+recent_birth = [c for c in claims_data if c["BIRTH_DT"] > datetime(1980, 1, 1)]
+seeded = []
+
+# A. Duplicate paid claims — exact re-bill with a new ICN
+for src in random.sample(outpatient, 500):
+    seeded.append(_seed_clone(src))
+
+# B. Paid before service — payment dated before service began
+for src in random.sample(outpatient, 300):
+    rec = _seed_clone(src)
+    rec["MDCD_PD_DT"] = rec["SRVC_BGNNG_DT"] - random.randint(5, 30) * DAY
+    seeded.append(rec)
+
+# C. Discharge before admission
+for src in random.sample(inpatient, 200):
+    rec = _seed_clone(src)
+    rec["DSCHRG_DT"] = rec["ADMISSION_DT"] - random.randint(1, 5) * DAY
+    seeded.append(rec)
+
+# D. Service before birth
+for src in random.sample(recent_birth, 150):
+    rec = _seed_clone(src)
+    rec["SRVC_BGNNG_DT"] = rec["BIRTH_DT"] - random.randint(30, 3650) * DAY
+    seeded.append(rec)
+
+# E. Provider outlier + upcoding — 6 NPIs billing inflated outpatient office visits
+for _ in range(1200):
+    rec = _seed_clone(random.choice(outpatient))
+    rec["PRVDR_ID"] = random.choice(BAD_PROVIDER_NPIS)
+    rec["PRCDR_CD_1"] = "99215"
+    rec["BILL_TYPE_CD"] = "131"
+    rec["TOT_MDCD_PD_AMT"] = round(random.uniform(1500, 3500), 2)
+    seeded.append(rec)
+
+# F. Same beneficiary billed in two states on the same day
+for src in random.sample(outpatient, 150):
+    rec = _seed_clone(src)
+    rec["SUBMTG_STATE_CD"] = random.choice(
+        [s for s in ["NY", "CA", "TX", "FL", "IL"] if s != src["SUBMTG_STATE_CD"]]
+    )
+    seeded.append(rec)
+
+# G. Excessive daily visit volume — 5 beneficiaries with ~30 visits in one day
+for _ in range(5):
+    base = random.choice(outpatient)
+    for _ in range(random.randint(25, 35)):
+        rec = _seed_clone(base)
+        rec["BENE_ID"] = base["BENE_ID"]
+        rec["SRVC_BGNNG_DT"] = base["SRVC_BGNNG_DT"]
+        rec["SRVC_ENDG_DT"] = base["SRVC_BGNNG_DT"]
+        rec["PRCDR_CD_1"] = random.choice(["99213", "99214", "99215"])
+        rec["PRVDR_ID"] = random.choice(BAD_PROVIDER_NPIS)
+        seeded.append(rec)
+
+claims_data.extend(seeded)
+print("Seeded", len(seeded), "improper-payment records")
+
+# COMMAND ----------
+
 # Print first few records to verify
 print("Generated", len(claims_data), "records")
 print("\nExample record:")
