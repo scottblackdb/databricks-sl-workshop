@@ -478,10 +478,7 @@ def _load_medical_providers_table(
     *,
     force_reload: bool = False,
 ) -> None:
-    _require_pyarrow()
-    if not parquet_path.is_file():
-        print(f"  [!] medical providers parquet not found: {parquet_path}")
-        sys.exit(1)
+    """Ensure the source table exists and contains rows, including on reruns."""
 
     ddl = _MEDICAL_PROVIDERS_DDL
     if DEFAULT_MEDICAL_PROVIDERS_SQL.is_file():
@@ -505,12 +502,15 @@ def _load_medical_providers_table(
                 f"  [~] public.medical_providers already has {existing:,} rows — skipping load"
             )
             return
-        if existing and force_reload:
-            print(f"  [*] truncating public.medical_providers ({existing:,} rows)")
-            cur.execute("TRUNCATE TABLE public.medical_providers")
+
+    _require_pyarrow()
+    if not parquet_path.is_file():
+        raise FileNotFoundError(f"medical providers parquet not found: {parquet_path}")
 
     print(f"  Loading {parquet_path.name} into public.medical_providers ...")
     table = pq.read_table(parquet_path)
+    if table.num_rows == 0:
+        raise ValueError(f"medical providers parquet is empty: {parquet_path}")
     missing = [c for c in _MEDICAL_PROVIDERS_COLUMNS if c not in table.column_names]
     if missing:
         print(f"  [!] parquet missing columns: {', '.join(missing)}")
@@ -525,6 +525,9 @@ def _load_medical_providers_table(
     batch_size = 50_000
     loaded = 0
     with conn.cursor() as cur:
+        if existing and force_reload:
+            print(f"  [*] truncating public.medical_providers ({existing:,} rows)")
+            cur.execute("TRUNCATE TABLE public.medical_providers")
         for start in range(0, table.num_rows, batch_size):
             batch = table.slice(start, min(batch_size, table.num_rows - start))
             buf = io.StringIO()
@@ -536,6 +539,9 @@ def _load_medical_providers_table(
                 copy.write(buf.read())
             loaded += batch.num_rows
             print(f"      ... {loaded:,}/{table.num_rows:,} rows")
+        cur.execute("SELECT COUNT(*) FROM public.medical_providers")
+        if cur.fetchone()[0] == 0:
+            raise RuntimeError("public.medical_providers is still empty after loading")
     conn.commit()
     print(f"  [+] loaded {loaded:,} rows into public.medical_providers")
 
@@ -619,13 +625,14 @@ def setup_lakebase_workshop_source(
     skip_if_exists: bool = False,
     force_reload: bool = False,
 ) -> None:
-    """Create Lakebase project, seed medical_providers, register UC catalog."""
+    """Create or reuse Lakebase, ensure a populated source table, register UC."""
     project_id = create_lakebase(
         w, display_name, pg_version, skip_if_exists=skip_if_exists
     )
     branch = _resolve_lakebase_branch(w, project_id)
     endpoint_name, host = _resolve_lakebase_endpoint(w, branch)
-    print(f"\nSeeding Lakebase database '{postgres_database}' on {host}...")
+    # Project existence only skips provisioning; always verify and repair seed data.
+    print(f"\nChecking Lakebase source '{postgres_database}.public.medical_providers' on {host}...")
     try:
         with _connect_lakebase(
             w,
@@ -1661,7 +1668,10 @@ Prerequisites:
     parser.add_argument(
         "--skip-lakebase-if-exists",
         action="store_true",
-        help="If the Lakebase project already exists, skip create/permission updates",
+        help=(
+            "If the Lakebase project already exists, skip create/permission updates; "
+            "still create or populate public.medical_providers if missing or empty"
+        ),
     )
     parser.add_argument(
         "--warehouse-id",
