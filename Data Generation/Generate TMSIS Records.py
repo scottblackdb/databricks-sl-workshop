@@ -117,7 +117,7 @@ for i in range(150000):
 # MAGIC The claims above are fully random, so program-integrity and anomaly labs have
 # MAGIC nothing to detect. Here we append a small population (~2%) of records that carry
 # MAGIC recognizable improper-payment signatures. Each pattern is detected by the SQL
-# MAGIC rules in `Lab 1 - Data Ingestion/1.8 Gold - Improper Payment Flags.sql`.
+# MAGIC rules in `Lab 1 - Data Ingestion/1.8 Gold - Improper Payment Flags.ipynb`.
 # MAGIC
 # MAGIC The same logic is available as a standalone, re-runnable script
 # MAGIC (`Data Generation/Inject Improper Payments.py`) that seeds the committed

@@ -12,7 +12,7 @@ injected records (ICN_NUM starting with the sentinel prefix) before re-seeding,
 so it can be re-run safely.
 
 Each seeded pattern is detectable with the SQL rules in
-``Lab 1 - Data Ingestion/1.8 Gold - Improper Payment Flags.sql``.  No column
+``Lab 1 - Data Ingestion/1.8 Gold - Improper Payment Flags.ipynb``.  No column
 marks a claim as fraudulent — participants find them by writing the edit checks.
 
 Patterns seeded

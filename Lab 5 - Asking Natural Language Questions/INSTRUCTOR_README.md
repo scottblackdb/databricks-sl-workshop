@@ -23,9 +23,9 @@ The Agent depends on tables created in:
 |---|---|
 | `silver.tmsis_claims` | Lab 1 — `1.5 Silver Clean TMSIS.ipynb` |
 | `silver.medical_providers` | Lab 1 — `1.4 Silver Clean Providers.sql` |
-| `gold.provider_review_summary` | Lab 1 — `1.7 Gold Aggregate Provider Claims.sql` |
-| `gold.tmsis_improper_payment_flags` | Lab 1 — `1.8 Gold - Improper Payment Flags.sql` |
-| `gold.tmsis_provider_risk_summary` | Lab 1 — `1.8 Gold - Improper Payment Flags.sql` |
+| `gold.provider_review_summary` | Lab 1 — `1.7 Gold Aggregate Provider Claims.ipynb` |
+| `gold.tmsis_improper_payment_flags` | Lab 1 — `1.8 Gold - Improper Payment Flags.ipynb` |
+| `gold.tmsis_provider_risk_summary` | Lab 1 — `1.8 Gold - Improper Payment Flags.ipynb` |
 
 ## Prerequisites
 
