@@ -18,9 +18,19 @@
       "query": "SELECT * \nFROM scott_dev.silver.tmsis_stats"
     },
     {
+      "name": "pi_rules_ds",
+      "displayName": "Improper Payment Flags by Rule",
+      "query": "SELECT flag_rule, flag_description,\n       COUNT(*) AS FLAGGED_CLAIMS,\n       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS FLAGGED_DOLLARS\nFROM scott_dev.gold.tmsis_improper_payment_flags\nGROUP BY flag_rule, flag_description\nORDER BY FLAGGED_DOLLARS DESC"
+    },
+    {
       "name": "ovp_ds",
       "displayName": "Outpatient Overpayments",
-      "query": "SELECT PRVDR_ID, ROUND(SUM(TOT_MDCD_PD_AMT),0) AS OVERPAID_AMOUNT, COUNT(*) AS CLAIMS FROM scott_dev.silver.tmsis_claims WHERE BILL_TYPE_CD = '131' AND TOT_MDCD_PD_AMT > 1000 GROUP BY PRVDR_ID ORDER BY OVERPAID_AMOUNT DESC"
+      "query": "SELECT PRVDR_ID,\n       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS OVERPAID_AMOUNT,\n       COUNT(*) AS CLAIMS\nFROM scott_dev.gold.tmsis_improper_payment_flags\nWHERE flag_rule = 'OUTPATIENT_OVERPAYMENT'\nGROUP BY PRVDR_ID\nORDER BY OVERPAID_AMOUNT DESC"
+    },
+    {
+      "name": "pi_risk_ds",
+      "displayName": "Providers to Investigate First",
+      "query": "SELECT PRVDR_ID, flagged_claims, distinct_rules, flagged_dollars\nFROM scott_dev.gold.tmsis_provider_risk_summary\nORDER BY flagged_dollars DESC\nLIMIT 25"
     }
   ],
   "pages": [
@@ -423,12 +433,78 @@
         },
         {
           "widget": {
-            "name": "ovp_text",
-            "textbox_spec": "# Outpatient Overpayments by Provider\nNormal outpatient visits are $50\u2013$300; the tall bars are overpayment / upcoding fraud to investigate."
+            "name": "pi_header",
+            "textbox_spec": "# Program Integrity \u2014 Improper Payments\nEvery chart below reads the gold tables you built in **1.8 Gold - Improper Payment Flags**: `gold.tmsis_improper_payment_flags` and `gold.tmsis_provider_risk_summary`. The edit-check rules live in the pipeline, so the dashboard just reports on them \u2014 add a rule in Lab 1 and it shows up here."
           },
           "position": {
             "x": 0,
             "y": 25,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "pi_rules_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pi_rules_ds",
+                  "fields": [
+                    {
+                      "name": "flag_rule",
+                      "expression": "`flag_rule`"
+                    },
+                    {
+                      "name": "sum(FLAGGED_DOLLARS)",
+                      "expression": "SUM(`FLAGGED_DOLLARS`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "flag_rule",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Rule"
+                },
+                "y": {
+                  "fieldName": "sum(FLAGGED_DOLLARS)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Flagged $"
+                }
+              },
+              "frame": {
+                "title": "Flagged Dollars by Rule",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ovp_text",
+            "textbox_spec": "# Outpatient Overpayments by Provider\nThe `OUTPATIENT_OVERPAYMENT` rule only. A normal outpatient (office) visit is $50\u2013$300. The tall bars are providers billing far above that \u2014 a classic overpayment / upcoding fraud signal to investigate."
+          },
+          "position": {
+            "x": 0,
+            "y": 33,
             "width": 6,
             "height": 2
           }
@@ -482,9 +558,119 @@
           },
           "position": {
             "x": 0,
-            "y": 27,
+            "y": 35,
             "width": 6,
             "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "pi_risk_text",
+            "textbox_spec": "# Providers to Investigate First\nRanked from `gold.tmsis_provider_risk_summary`. **Distinct rules** is the column to watch: a provider tripping several different edit checks with high flagged dollars is a far stronger lead than one tripping a single rule."
+          },
+          "position": {
+            "x": 0,
+            "y": 41,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "pi_risk_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pi_risk_ds",
+                  "fields": [
+                    {
+                      "name": "PRVDR_ID",
+                      "expression": "`PRVDR_ID`"
+                    },
+                    {
+                      "name": "flagged_claims",
+                      "expression": "`flagged_claims`"
+                    },
+                    {
+                      "name": "distinct_rules",
+                      "expression": "`distinct_rules`"
+                    },
+                    {
+                      "name": "flagged_dollars",
+                      "expression": "`flagged_dollars`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "PRVDR_ID",
+                    "displayName": "Provider",
+                    "type": "string",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "order": 0,
+                    "title": "Provider",
+                    "visible": true
+                  },
+                  {
+                    "fieldName": "flagged_claims",
+                    "displayName": "Flagged Claims",
+                    "type": "integer",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "order": 1,
+                    "title": "Flagged Claims",
+                    "visible": true
+                  },
+                  {
+                    "fieldName": "distinct_rules",
+                    "displayName": "Distinct Rules",
+                    "type": "integer",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "order": 2,
+                    "title": "Distinct Rules",
+                    "visible": true
+                  },
+                  {
+                    "fieldName": "flagged_dollars",
+                    "displayName": "Flagged $",
+                    "type": "float",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "order": 3,
+                    "title": "Flagged $",
+                    "visible": true
+                  }
+                ]
+              },
+              "frame": {
+                "title": "Provider Risk Summary",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 43,
+            "width": 6,
+            "height": 8
           }
         }
       ],
