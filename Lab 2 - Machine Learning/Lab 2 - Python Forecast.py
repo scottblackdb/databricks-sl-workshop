@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Machine Learning Lab 2: Python Claims Forecast
 # MAGIC <br>
@@ -130,6 +134,7 @@ plt.show()
 
 # COMMAND ----------
 
+# DBTITLE 1,Train a Prophet model
 from prophet import Prophet
 
 FORECAST_HORIZON_DAYS = 30
@@ -141,7 +146,7 @@ train_pdf = history_pdf.rename(columns={"discharge_date": "ds", "total_amount": 
 model = Prophet(
     daily_seasonality=False,
     weekly_seasonality=True,
-    yearly_seasonality=False,
+    yearly_seasonality=True,
 )
 model.fit(train_pdf)
 

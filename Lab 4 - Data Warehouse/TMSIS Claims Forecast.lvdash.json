@@ -3,34 +3,85 @@
     {
       "name": "be3bb181",
       "displayName": "TMSIS Claims",
-      "query": "select DATE_TRUNC('DAY',DSCHRG_DT) DATE, round(sum(TOT_MDCD_PD_AMT), 0) as PAYMENT_AMOUNT, NULL FORECASE_AMOUNT\nfrom scott_dev.silver.tmsis_claims tc\nwhere DSCHRG_DT is not null\ngroup by DATE\nunion\nselect ts.discharge_date DATE, NULL PAYMENT_AMOUNT, round(sum(ts.total_amount)) as FORECASE_AMOUNT\nfrom scott_dev.gold.tmsis_forecast ts\ngroup by DATE"
+      "queryLines": [
+        "select\n",
+        "  COALESCE(a.DATE, b.DATE) as DATE,\n",
+        "  a.PAYMENT_AMOUNT,\n",
+        "  b.FORECAST_AMOUNT\n",
+        "from (\n",
+        "  select DATE_TRUNC('DAY', DSCHRG_DT) as DATE, round(sum(TOT_MDCD_PD_AMT), 0) as PAYMENT_AMOUNT\n",
+        "  from scottblack_dev.silver.tmsis_claims tc\n",
+        "  where DSCHRG_DT is not null\n",
+        "  group by DATE\n",
+        ") a\n",
+        "full outer join (\n",
+        "  select ts.discharge_date as DATE, round(sum(ts.total_amount)) as FORECAST_AMOUNT\n",
+        "  from scottblack_dev.gold.tmsis_forecast ts\n",
+        "  group by DATE\n",
+        ") b\n",
+        "on a.DATE = b.DATE"
+      ]
     },
     {
       "name": "d8f0fde6",
       "displayName": "Diag By Month",
-      "query": "SELECT \n    DATE_TRUNC('month', SRVC_BGNNG_DT) AS month,\n    DGNS_CD_1,\n    COUNT(DGNS_CD_1) AS diagnosis_count\nFROM \n    silver.tmsis_claims\nGROUP BY \n    DATE_TRUNC('month', SRVC_BGNNG_DT), DGNS_CD_1\nORDER BY \n    month;",
-      "catalog": "scott_dev",
+      "queryLines": [
+        "SELECT \n",
+        "    DATE_TRUNC('month', SRVC_BGNNG_DT) AS month,\n",
+        "    DGNS_CD_1,\n",
+        "    COUNT(DGNS_CD_1) AS diagnosis_count\n",
+        "FROM \n",
+        "    silver.tmsis_claims\n",
+        "GROUP BY \n",
+        "    DATE_TRUNC('month', SRVC_BGNNG_DT), DGNS_CD_1\n",
+        "ORDER BY \n",
+        "    month;"
+      ],
+      "catalog": "scottblack_dev",
       "schema": "default"
     },
     {
       "name": "53201525",
       "displayName": "tmsis_stats",
-      "query": "SELECT * \nFROM scott_dev.silver.tmsis_stats"
+      "queryLines": [
+        "SELECT * \n",
+        "FROM scottblack_dev.silver.tmsis_stats"
+      ]
     },
     {
       "name": "pi_rules_ds",
       "displayName": "Improper Payment Flags by Rule",
-      "query": "SELECT flag_rule, flag_description,\n       COUNT(*) AS FLAGGED_CLAIMS,\n       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS FLAGGED_DOLLARS\nFROM scott_dev.gold.tmsis_improper_payment_flags\nGROUP BY flag_rule, flag_description\nORDER BY FLAGGED_DOLLARS DESC"
+      "queryLines": [
+        "SELECT flag_rule, flag_description,\n",
+        "       COUNT(*) AS FLAGGED_CLAIMS,\n",
+        "       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS FLAGGED_DOLLARS\n",
+        "FROM scottblack_dev.gold.tmsis_improper_payment_flags\n",
+        "GROUP BY flag_rule, flag_description\n",
+        "ORDER BY FLAGGED_DOLLARS DESC"
+      ]
     },
     {
       "name": "ovp_ds",
       "displayName": "Outpatient Overpayments",
-      "query": "SELECT PRVDR_ID,\n       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS OVERPAID_AMOUNT,\n       COUNT(*) AS CLAIMS\nFROM scott_dev.gold.tmsis_improper_payment_flags\nWHERE flag_rule = 'OUTPATIENT_OVERPAYMENT'\nGROUP BY PRVDR_ID\nORDER BY OVERPAID_AMOUNT DESC"
+      "queryLines": [
+        "SELECT PRVDR_ID,\n",
+        "       ROUND(SUM(TOT_MDCD_PD_AMT), 0) AS OVERPAID_AMOUNT,\n",
+        "       COUNT(*) AS CLAIMS\n",
+        "FROM scottblack_dev.gold.tmsis_improper_payment_flags\n",
+        "WHERE flag_rule = 'OUTPATIENT_OVERPAYMENT'\n",
+        "GROUP BY PRVDR_ID\n",
+        "ORDER BY OVERPAID_AMOUNT DESC"
+      ]
     },
     {
       "name": "pi_risk_ds",
       "displayName": "Providers to Investigate First",
-      "query": "SELECT PRVDR_ID, flagged_claims, distinct_rules, flagged_dollars\nFROM scott_dev.gold.tmsis_provider_risk_summary\nORDER BY flagged_dollars DESC\nLIMIT 25"
+      "queryLines": [
+        "SELECT PRVDR_ID, flagged_claims, distinct_rules, flagged_dollars\n",
+        "FROM scottblack_dev.gold.tmsis_provider_risk_summary\n",
+        "ORDER BY flagged_dollars DESC\n",
+        "LIMIT 25"
+      ]
     }
   ],
   "pages": [
@@ -48,16 +99,16 @@
                   "datasetName": "be3bb181",
                   "fields": [
                     {
-                      "name": "daily(DATE)",
-                      "expression": "DATE_TRUNC(\"DAY\", `DATE`)"
+                      "name": "DATE",
+                      "expression": "`DATE`"
                     },
                     {
                       "name": "sum(PAYMENT_AMOUNT)",
                       "expression": "SUM(`PAYMENT_AMOUNT`)"
                     },
                     {
-                      "name": "sum(FORECASE_AMOUNT)",
-                      "expression": "SUM(`FORECASE_AMOUNT`)"
+                      "name": "sum(FORECAST_AMOUNT)",
+                      "expression": "SUM(`FORECAST_AMOUNT`)"
                     }
                   ],
                   "disaggregated": false
@@ -65,15 +116,16 @@
               }
             ],
             "spec": {
+              "frame": {},
               "version": 3,
               "widgetType": "line",
               "encodings": {
                 "x": {
-                  "fieldName": "daily(DATE)",
+                  "fieldName": "DATE",
+                  "displayName": "DATE",
                   "scale": {
                     "type": "temporal"
-                  },
-                  "displayName": "DATE"
+                  }
                 },
                 "y": {
                   "scale": {
@@ -85,7 +137,7 @@
                       "displayName": "Claims Amount"
                     },
                     {
-                      "fieldName": "sum(FORECASE_AMOUNT)",
+                      "fieldName": "sum(FORECAST_AMOUNT)",
                       "displayName": "Forecasted Claims Amount"
                     }
                   ]
@@ -93,6 +145,9 @@
                 "label": {
                   "show": false
                 }
+              },
+              "data": {
+                "queryName": "main_query"
               }
             }
           },
@@ -106,7 +161,11 @@
         {
           "widget": {
             "name": "d25d1fad",
-            "textbox_spec": "# TMSIS Claims Amount & 7 Day Forecast"
+            "multilineTextboxSpec": {
+              "lines": [
+                "# TMSIS Claims Amount & 7 Day Forecast"
+              ]
+            }
           },
           "position": {
             "x": 0,
@@ -187,7 +246,11 @@
         {
           "widget": {
             "name": "d834d51e",
-            "textbox_spec": "## Diagnosis By Code & Month"
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Diagnosis By Code & Month"
+              ]
+            }
           },
           "position": {
             "x": 0,
@@ -434,7 +497,12 @@
         {
           "widget": {
             "name": "pi_header",
-            "textbox_spec": "# Program Integrity \u2014 Improper Payments\nEvery chart below reads the gold tables you built in **1.8 Gold - Improper Payment Flags**: `gold.tmsis_improper_payment_flags` and `gold.tmsis_provider_risk_summary`. The edit-check rules live in the pipeline, so the dashboard just reports on them \u2014 add a rule in Lab 1 and it shows up here."
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Program Integrity — Improper Payments\n",
+                "Every chart below reads the gold tables you built in **1.8 Gold - Improper Payment Flags**: `gold.tmsis_improper_payment_flags` and `gold.tmsis_provider_risk_summary`. The edit-check rules live in the pipeline, so the dashboard just reports on them — add a rule in Lab 1 and it shows up here."
+              ]
+            }
           },
           "position": {
             "x": 0,
@@ -500,7 +568,12 @@
         {
           "widget": {
             "name": "ovp_text",
-            "textbox_spec": "# Outpatient Overpayments by Provider\nThe `OUTPATIENT_OVERPAYMENT` rule only. A normal outpatient (office) visit is $50\u2013$300. The tall bars are providers billing far above that \u2014 a classic overpayment / upcoding fraud signal to investigate."
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Outpatient Overpayments by Provider\n",
+                "The `OUTPATIENT_OVERPAYMENT` rule only. A normal outpatient (office) visit is $50–$300. The tall bars are providers billing far above that — a classic overpayment / upcoding fraud signal to investigate."
+              ]
+            }
           },
           "position": {
             "x": 0,
@@ -566,7 +639,12 @@
         {
           "widget": {
             "name": "pi_risk_text",
-            "textbox_spec": "# Providers to Investigate First\nRanked from `gold.tmsis_provider_risk_summary`. **Distinct rules** is the column to watch: a provider tripping several different edit checks with high flagged dollars is a far stronger lead than one tripping a single rule."
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Providers to Investigate First\n",
+                "Ranked from `gold.tmsis_provider_risk_summary`. **Distinct rules** is the column to watch: a provider tripping several different edit checks with high flagged dollars is a far stronger lead than one tripping a single rule."
+              ]
+            }
           },
           "position": {
             "x": 0,
@@ -606,63 +684,30 @@
               }
             ],
             "spec": {
-              "version": 1,
+              "frame": {
+                "showTitle": true,
+                "title": "Providers to Investigate First"
+              },
+              "version": 2,
               "widgetType": "table",
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "PRVDR_ID",
-                    "displayName": "Provider",
-                    "type": "string",
-                    "booleanValues": [
-                      "false",
-                      "true"
-                    ],
-                    "order": 0,
-                    "title": "Provider",
-                    "visible": true
+                    "fieldName": "PRVDR_ID"
                   },
                   {
-                    "fieldName": "flagged_claims",
-                    "displayName": "Flagged Claims",
-                    "type": "integer",
-                    "booleanValues": [
-                      "false",
-                      "true"
-                    ],
-                    "order": 1,
-                    "title": "Flagged Claims",
-                    "visible": true
+                    "fieldName": "flagged_claims"
                   },
                   {
-                    "fieldName": "distinct_rules",
-                    "displayName": "Distinct Rules",
-                    "type": "integer",
-                    "booleanValues": [
-                      "false",
-                      "true"
-                    ],
-                    "order": 2,
-                    "title": "Distinct Rules",
-                    "visible": true
+                    "fieldName": "distinct_rules"
                   },
                   {
-                    "fieldName": "flagged_dollars",
-                    "displayName": "Flagged $",
-                    "type": "float",
-                    "booleanValues": [
-                      "false",
-                      "true"
-                    ],
-                    "order": 3,
-                    "title": "Flagged $",
-                    "visible": true
+                    "fieldName": "flagged_dollars"
                   }
                 ]
               },
-              "frame": {
-                "title": "Provider Risk Summary",
-                "showTitle": true
+              "data": {
+                "queryName": "main_query"
               }
             }
           },
@@ -676,5 +721,11 @@
       ],
       "pageType": "PAGE_TYPE_CANVAS"
     }
-  ]
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
 }
