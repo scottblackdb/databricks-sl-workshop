@@ -177,7 +177,7 @@ def _is_already_exists(exc: Exception) -> bool:
     if isinstance(exc, (AlreadyExists, ResourceAlreadyExists)):
         return True
     msg = str(exc).lower()
-    return any(k in msg for k in ("already exists", "conflict", "409", "uniqueness"))
+    return "already exists" in msg
 
 
 def _create_idempotent(
@@ -246,7 +246,7 @@ def get_profiles() -> list[str]:
     # special default section so it is included in sections(), even when empty.
     config = configparser.RawConfigParser(default_section="")
     config.read(cfg_path)
-    return config.sections()
+    return [name for name in config.sections() if not name.startswith("__")]
 
 
 def select_profile(profiles: list[str], profile_arg: str | None) -> str:
@@ -257,9 +257,8 @@ def select_profile(profiles: list[str], profile_arg: str | None) -> str:
             sys.exit(1)
         return profile_arg
 
-    if len(profiles) == 1:
-        print(f"Using profile: {profiles[0]}")
-        return profiles[0]
+    if not profiles:
+        raise ValueError("No Databricks profiles found in ~/.databrickscfg")
 
     print("\nAvailable Databricks profiles:")
     for i, profile in enumerate(profiles, 1):
@@ -306,11 +305,6 @@ def _lakebase_project_exists(w: WorkspaceClient, project_id: str) -> bool:
         return True
     except NotFound:
         return False
-    except Exception as e:
-        msg = str(e).lower()
-        if any(k in msg for k in ("not found", "does not exist", "404")):
-            return False
-        raise
 
 
 def _grant_lakebase_project_manage_all_account_users(
@@ -345,14 +339,15 @@ def create_lakebase(
 ) -> str:
     """Create an autoscaling Lakebase project. Returns the project id."""
     project_id = _to_project_id(display_name)
-    if skip_if_exists and _lakebase_project_exists(w, project_id):
+    exists = _lakebase_project_exists(w, project_id)
+    if skip_if_exists and exists:
         print(
             f"\nSkipping Lakebase project '{display_name}' "
             f"(id: {project_id}) — already exists."
         )
         return project_id
 
-    if _lakebase_project_exists(w, project_id):
+    if exists:
         print(f"\nLakebase project '{display_name}' (id: {project_id}) already exists.")
         if not skip_if_exists:
             _grant_lakebase_project_manage_all_account_users(w, project_id)
@@ -411,7 +406,9 @@ def _resolve_lakebase_branch(w: WorkspaceClient, project_id: str) -> str:
     if not branches:
         print(f"Error: no branches found for Lakebase project '{project_id}'")
         sys.exit(1)
-    return branches[0].name or ""
+    if len(branches) != 1 or not branches[0].name:
+        raise ValueError(f"No default branch for '{project_id}'; cannot choose a branch safely")
+    return branches[0].name
 
 
 def _resolve_lakebase_endpoint(w: WorkspaceClient, branch: str) -> tuple[str, str]:
@@ -423,10 +420,8 @@ def _resolve_lakebase_endpoint(w: WorkspaceClient, branch: str) -> tuple[str, st
         if etype == postgres.EndpointType.ENDPOINT_TYPE_READ_WRITE:
             chosen = endpoint
             break
-    if chosen is None and endpoints:
-        chosen = endpoints[0]
     if chosen is None or not chosen.name:
-        print(f"Error: no Lakebase endpoints found on branch '{branch}'")
+        print(f"Error: no read-write Lakebase endpoint found on branch '{branch}'")
         sys.exit(1)
     host = None
     if chosen.status and chosen.status.hosts:
@@ -595,14 +590,14 @@ def create_lakebase_uc_catalog(
             else:
                 print(f"  [!] create Lakebase UC catalog '{catalog_id}' — {e}")
                 sys.exit(1)
-    else:
-        # Existing catalogs may be an older foreign/federation catalog (e.g. dbo).
-        # Warn so operators know Lab 1.1 expects medical_providers.public.* from
-        # a Lakebase registration of databricks_postgres.
-        print(
-            f"  Note: if '{catalog_id}' is not a Lakebase catalog for "
-            f"'{postgres_database}.public', delete/rename it and re-run "
-            f"with --lakebase-only, or pass --lakebase-catalog <new-name>."
+
+    # Also validate after a concurrent create: a name collision is not success.
+    registration = w.postgres.get_catalog(name=f"catalogs/{catalog_id}")
+    spec = registration.spec
+    if not spec or spec.branch != branch or spec.postgres_database != postgres_database:
+        raise ValueError(
+            f"Catalog '{catalog_id}' is not registered to {branch}/{postgres_database}. "
+            "Use --lakebase-catalog with an unused name or correct the registration."
         )
 
     _grant_privileges(
@@ -667,12 +662,35 @@ def user_catalog_name(email: str) -> str:
     return f"{slug}_dev"
 
 
+def read_participants(users_file: str) -> list[str]:
+    """Validate participants and catalog names before provisioning any resources."""
+    path = Path(users_file)
+    emails: list[str] = []
+    owners: dict[str, str] = {}
+    seen: set[str] = set()
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        email = line.strip()
+        if not email or email.startswith("#"):
+            continue
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            raise ValueError(f"Invalid email at {path}:{line_number}: {email!r}")
+        if email.lower() in seen:
+            continue
+        catalog = user_catalog_name(email)
+        if catalog in owners:
+            raise ValueError(f"Participants '{owners[catalog]}' and '{email}' share catalog '{catalog}'")
+        owners[catalog] = email
+        seen.add(email.lower())
+        emails.append(email)
+    return emails
+
+
 
 def _sql_identifier(name: str, *, label: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
         print(f"Error: invalid {label} {name!r} for SQL (use letters, numbers, _, -)")
         sys.exit(1)
-    return name
+    return f"`{name}`"
 
 
 def _resolve_sql_warehouse_id(w: WorkspaceClient, warehouse_id: str | None) -> str:
@@ -692,10 +710,12 @@ def _execute_sql_statement(w: WorkspaceClient, warehouse_id: str, statement: str
         wait_timeout="50s",
         on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,
     )
-    deadline = time.time() + 120
+    deadline = time.monotonic() + 120
     while resp.status and resp.status.state not in _SQL_TERMINAL_STATES:
-        if time.time() >= deadline:
-            break
+        if time.monotonic() >= deadline:
+            if resp.statement_id:
+                w.statement_execution.cancel_execution(resp.statement_id)
+            raise TimeoutError("SQL statement did not finish within the polling timeout")
         time.sleep(2)
         resp = w.statement_execution.get_statement(resp.statement_id)
 
@@ -942,6 +962,9 @@ def _get_or_create_storage_credential(
 ) -> str:
     external_id = _get_storage_credential_external_id(w, credential_name)
     if external_id:
+        credential = w.storage_credentials.get(name=credential_name)
+        if not credential.aws_iam_role or credential.aws_iam_role.role_arn != role_arn:
+            raise ValueError(f"Storage credential '{credential_name}' uses a different IAM role")
         print(f"  [~] storage credential '{credential_name}' (already exists)")
         return external_id
 
@@ -967,11 +990,20 @@ def _validate_storage_credential(
     external_location_name: str | None = None,
 ) -> None:
     try:
-        w.storage_credentials.validate(
+        validation = w.storage_credentials.validate(
             storage_credential_name=credential_name,
             url=location_url,
             external_location_name=external_location_name,
         )
+        failures = [
+            result for result in (validation.results or [])
+            if getattr(result.result, "value", result.result) == "FAIL"
+        ]
+        if not validation.results or failures:
+            raise ValueError(
+                f"Storage validation failed for '{credential_name}': "
+                + "; ".join(result.message or str(result.operation) for result in failures)
+            )
         print(f"  [+] validated storage credential '{credential_name}'")
     except Exception as e:
         print(f"  [!] storage credential validation — {e}")
@@ -987,6 +1019,9 @@ def _get_or_create_external_location(
     try:
         loc = w.external_locations.get(name=location_name)
         if loc.url:
+            if (_normalize_storage_url(loc.url) != _normalize_storage_url(location_url)
+                    or loc.credential_name != credential_name):
+                raise ValueError(f"External location '{location_name}' uses a different URL or credential")
             print(f"  [~] external location '{location_name}' (already exists)")
             return loc.url
     except NotFound:
@@ -1145,15 +1180,13 @@ def _grant_aws_uc_storage_access(
 
 
 def _has_storage_credentials(w: WorkspaceClient) -> bool:
-    try:
-        return any(
-            True
-            for cred in w.storage_credentials.list()
-            if not (cred.name and cred.name.startswith("__"))
-        )
-    except Exception as e:
-        print(f"  Note: could not list storage credentials: {e}")
-    return False
+    if not w.config.is_aws:
+        return False
+    return any(
+        cred.aws_iam_role is not None
+        for cred in w.storage_credentials.list()
+        if not (cred.name and cred.name.startswith("__"))
+    )
 
 
 def _ensure_catalog(
@@ -1237,8 +1270,6 @@ def _upload_tmsis_claims_json(
             return
         except NotFound:
             pass
-        except Exception:
-            pass
 
     size_mb = local_path.stat().st_size / (1024 * 1024)
     print(
@@ -1276,7 +1307,7 @@ def create_shared_main_catalog(
     warehouse_id: str | None = None,
     tmsis_file: Path = DEFAULT_TMSIS_LOCAL_PATH,
     skip_tmsis_upload: bool = False,
-) -> None:
+) -> AwsUcStorage | None:
     """Create the shared ``main`` catalog, TMSIS volume, and upload claims JSON."""
     print(f"\nCreating shared Unity Catalog resources (catalog: {catalog_name})...")
 
@@ -1328,6 +1359,7 @@ def create_shared_main_catalog(
         print(f"  [~] skipped TMSIS upload for volume '{full_volume}'")
 
     _upload_workshop_repo_link(w)
+    return aws_storage
 
 
 def _managed_location_for_catalog(
@@ -1412,6 +1444,15 @@ def create_user_catalog(
 ) -> None:
     catalog_name = user_catalog_name(email)
     print(f"\nCreating participant catalog '{catalog_name}' for {email}...")
+    try:
+        existing = w.catalogs.get(name=catalog_name)
+    except NotFound:
+        existing = None
+    if existing and existing.owner and existing.owner.lower() != email.lower():
+        raise ValueError(
+            f"Catalog '{catalog_name}' belongs to '{existing.owner}', not '{email}'; "
+            "resolve ownership before rerunning setup"
+        )
     catalog_storage = (
         _managed_location_for_catalog(aws_storage, catalog_name)
         if aws_storage
@@ -1453,23 +1494,15 @@ def create_user_catalogs(
     users_file: str,
     *,
     warehouse_id: str | None,
+    aws_storage: AwsUcStorage | None = None,
+    storage_checked: bool = False,
 ) -> None:
-    path = Path(users_file)
-    if not path.exists():
-        print(f"Error: users file '{users_file}' not found.")
-        sys.exit(1)
-
-    emails = [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
+    emails = read_participants(users_file)
     if not emails:
         print("No email addresses found in file.")
         return
 
-    aws_storage: AwsUcStorage | None = None
-    if _has_storage_credentials(w):
+    if not storage_checked and _has_storage_credentials(w):
         _require_aws_credentials()
         aws_storage = provision_aws_uc_storage_for_catalog(w, DEFAULT_SHARED_CATALOG)
 
@@ -1518,16 +1551,7 @@ def _ensure_entitlements(w: WorkspaceClient, user: iam.User) -> int:
 
 
 def provision_users(w: WorkspaceClient, users_file: str) -> None:
-    path = Path(users_file)
-    if not path.exists():
-        print(f"Error: users file '{users_file}' not found.")
-        sys.exit(1)
-
-    emails = [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
+    emails = read_participants(users_file)
     if not emails:
         print("No email addresses found in file.")
         return
@@ -1569,6 +1593,8 @@ def provision_users(w: WorkspaceClient, users_file: str) -> None:
     if warnings:
         summary += f" ({warnings} entitlement warning(s) — see above.)"
     print(summary)
+    if failed or warnings:
+        raise RuntimeError(f"User provisioning incomplete: {failed} failures, {warnings} entitlement warnings")
 
 
 def main() -> None:
@@ -1728,14 +1754,13 @@ Prerequisites:
 
     args = parser.parse_args()
 
-    needs_users_file = not (
-        args.main_only or args.users_only or args.lakebase_only
-    )
+    needs_users_file = not (args.main_only or args.lakebase_only)
     if needs_users_file and not args.users_file:
         parser.error(
-            "--users-file is required unless --lakebase-only, --main-only, "
-            "or --users-only is specified"
+            "--users-file is required unless --lakebase-only or --main-only is specified"
         )
+    if needs_users_file:
+        read_participants(args.users_file)
 
     profiles = get_profiles()
     profile = select_profile(profiles, args.profile)
@@ -1766,16 +1791,26 @@ Prerequisites:
         create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
     elif args.infra_only:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
-        create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
+        storage = create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
+        create_user_catalogs(
+            w, args.users_file, warehouse_id=args.warehouse_id,
+            aws_storage=storage, storage_checked=True,
+        )
     else:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
-        create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
+        storage = create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
         provision_users(w, args.users_file)
-        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
+        create_user_catalogs(
+            w, args.users_file, warehouse_id=args.warehouse_id,
+            aws_storage=storage, storage_checked=True,
+        )
 
     print("\nWorkshop setup complete.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
