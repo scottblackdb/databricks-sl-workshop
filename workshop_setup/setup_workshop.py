@@ -242,7 +242,9 @@ def get_profiles() -> list[str]:
     if not cfg_path.exists():
         print("Error: ~/.databrickscfg not found. Run 'databricks configure' first.")
         sys.exit(1)
-    config = configparser.RawConfigParser()
+    # Databricks treats [DEFAULT] as a regular profile. Disable ConfigParser's
+    # special default section so it is included in sections(), even when empty.
+    config = configparser.RawConfigParser(default_section="")
     config.read(cfg_path)
     return config.sections()
 
