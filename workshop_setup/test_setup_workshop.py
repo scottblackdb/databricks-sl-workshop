@@ -71,9 +71,41 @@ class SetupTests(unittest.TestCase):
 
     def test_wrong_catalog_registration_is_rejected(self):
         workspace = MagicMock()
-        workspace.postgres.get_catalog.return_value = SimpleNamespace(
-            spec=SimpleNamespace(branch="wrong", postgres_database="databricks_postgres")
+        workspace.postgres.get_catalog.return_value = postgres.Catalog(
+            status=postgres.CatalogCatalogStatus(
+                branch="wrong", postgres_database="databricks_postgres"
+            )
         )
+        with patch.object(setup, "_resolve_lakebase_branch", return_value="expected"):
+            with self.assertRaisesRegex(ValueError, "not registered"):
+                setup.create_lakebase_uc_catalog(
+                    workspace, catalog_id="medical_providers", project_id="workshop"
+                )
+        workspace.grants.update.assert_not_called()
+
+    def test_catalog_registration_uses_observed_status(self):
+        for existing in (True, False):
+            with self.subTest(existing=existing):
+                workspace = MagicMock()
+                if not existing:
+                    workspace.catalogs.get.side_effect = setup.NotFound("not found")
+                workspace.postgres.get_catalog.return_value = postgres.Catalog(
+                    status=postgres.CatalogCatalogStatus(
+                        branch="expected", postgres_database="databricks_postgres"
+                    )
+                )
+                with patch.object(setup, "_resolve_lakebase_branch", return_value="expected"), patch.object(
+                    setup, "_grant_privileges"
+                ) as grant:
+                    setup.create_lakebase_uc_catalog(
+                        workspace, catalog_id="medical_providers", project_id="workshop"
+                    )
+                grant.assert_called_once()
+                self.assertEqual(workspace.postgres.create_catalog.call_count, int(not existing))
+
+    def test_missing_catalog_registration_status_is_rejected(self):
+        workspace = MagicMock()
+        workspace.postgres.get_catalog.return_value = postgres.Catalog()
         with patch.object(setup, "_resolve_lakebase_branch", return_value="expected"):
             with self.assertRaisesRegex(ValueError, "not registered"):
                 setup.create_lakebase_uc_catalog(
@@ -87,6 +119,30 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "belongs to"):
             setup.create_user_catalog(
                 workspace, "a@example.com", warehouse_id="wh", aws_storage=None
+            )
+        workspace.catalogs.update.assert_not_called()
+
+    def test_schema_ownership_is_transferred_before_catalog(self):
+        workspace = MagicMock()
+        workspace.catalogs.get.return_value = SimpleNamespace(owner="setup@example.com")
+        workspace.schemas.get.return_value = SimpleNamespace(owner="setup@example.com")
+        transferred = []
+        workspace.schemas.update.side_effect = lambda **kw: transferred.append(kw["full_name"])
+        workspace.catalogs.update.side_effect = lambda **kw: transferred.append(kw["name"])
+        setup._transfer_user_catalog_ownership(
+            workspace, "participant_dev", "participant@example.com", ("bronze", "silver", "gold")
+        )
+        self.assertEqual(transferred, [
+            "participant_dev.bronze", "participant_dev.silver", "participant_dev.gold",
+            "participant_dev",
+        ])
+
+    def test_schema_transfer_failure_preserves_catalog_ownership(self):
+        workspace = MagicMock()
+        workspace.schemas.update.side_effect = RuntimeError("denied")
+        with self.assertRaises(SystemExit):
+            setup._transfer_user_catalog_ownership(
+                workspace, "participant_dev", "participant@example.com", ("bronze",)
             )
         workspace.catalogs.update.assert_not_called()
 

@@ -593,8 +593,9 @@ def create_lakebase_uc_catalog(
 
     # Also validate after a concurrent create: a name collision is not success.
     registration = w.postgres.get_catalog(name=f"catalogs/{catalog_id}")
-    spec = registration.spec
-    if not spec or spec.branch != branch or spec.postgres_database != postgres_database:
+    # GET returns the observed registration in status; spec may be absent.
+    status = registration.status
+    if not status or status.branch != branch or status.postgres_database != postgres_database:
         raise ValueError(
             f"Catalog '{catalog_id}' is not registered to {branch}/{postgres_database}. "
             "Use --lakebase-catalog with an unused name or correct the registration."
@@ -1407,15 +1408,6 @@ def _transfer_user_catalog_ownership(
         print(f"  [!] could not read catalog '{catalog_name}' to set owner — {e}")
         sys.exit(1)
 
-    _set_owner_if_needed(
-        current_owner=catalog.owner,
-        desired_owner=owner_email,
-        update_fn=lambda: w.catalogs.update(name=catalog_name, owner=owner_email),
-        created_msg=f"catalog '{catalog_name}' owner set to '{owner_email}'",
-        exists_msg=f"catalog '{catalog_name}' owner already '{owner_email}'",
-        error_label=f"set catalog '{catalog_name}' owner to '{owner_email}'",
-    )
-
     for schema in schemas:
         full_name = f"{catalog_name}.{schema}"
         try:
@@ -1433,6 +1425,16 @@ def _transfer_user_catalog_ownership(
             exists_msg=f"schema '{full_name}' owner already '{owner_email}'",
             error_label=f"set schema '{full_name}' owner to '{owner_email}'",
         )
+
+    # Transfer the parent last: giving it away can remove our USE CATALOG.
+    _set_owner_if_needed(
+        current_owner=catalog.owner,
+        desired_owner=owner_email,
+        update_fn=lambda: w.catalogs.update(name=catalog_name, owner=owner_email),
+        created_msg=f"catalog '{catalog_name}' owner set to '{owner_email}'",
+        exists_msg=f"catalog '{catalog_name}' owner already '{owner_email}'",
+        error_label=f"set catalog '{catalog_name}' owner to '{owner_email}'",
+    )
 
 
 def create_user_catalog(
