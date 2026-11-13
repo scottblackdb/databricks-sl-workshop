@@ -1498,8 +1498,15 @@ def create_user_catalogs(
     warehouse_id: str | None,
     aws_storage: AwsUcStorage | None = None,
     storage_checked: bool = False,
+    skip_emails: list[str] | None = None,
 ) -> None:
     emails = read_participants(users_file)
+    if skip_emails:
+        skipped = {e.lower() for e in skip_emails}
+        for email in emails:
+            if email.lower() in skipped:
+                print(f"  [~] skipping participant catalog for {email} (user not provisioned)")
+        emails = [e for e in emails if e.lower() not in skipped]
     if not emails:
         print("No email addresses found in file.")
         return
@@ -1552,15 +1559,23 @@ def _ensure_entitlements(w: WorkspaceClient, user: iam.User) -> int:
     return len(missing)
 
 
-def provision_users(w: WorkspaceClient, users_file: str) -> None:
+def provision_users(
+    w: WorkspaceClient, users_file: str, *, raise_on_failure: bool = True
+) -> tuple[list[str], int]:
+    """Create workspace users and grant entitlements.
+
+    Returns ``(failed_emails, entitlement_warnings)``. Raises RuntimeError on
+    any failure or entitlement warning unless ``raise_on_failure`` is False.
+    """
     emails = read_participants(users_file)
     if not emails:
         print("No email addresses found in file.")
-        return
+        return [], 0
 
     print(f"\nProvisioning {len(emails)} user(s)...")
 
-    success = skipped = failed = warnings = 0
+    success = skipped = warnings = 0
+    failed_emails: list[str] = []
     for email in emails:
         display = email.split("@")[0]
         try:
@@ -1576,7 +1591,7 @@ def provision_users(w: WorkspaceClient, users_file: str) -> None:
         except Exception as e:
             if not _is_already_exists(e):
                 print(f"  [!] {email} — {e}")
-                failed += 1
+                failed_emails.append(email)
                 continue
             print(f"  [~] {email} (already exists)")
             skipped += 1
@@ -1591,19 +1606,50 @@ def provision_users(w: WorkspaceClient, users_file: str) -> None:
                 print(f"      [!] entitlement check for '{email}' — {ee}")
                 warnings += 1
 
+    failed = len(failed_emails)
     summary = f"\n  Users: {success} created, {skipped} already existed, {failed} failed."
     if warnings:
         summary += f" ({warnings} entitlement warning(s) — see above.)"
     print(summary)
-    if failed or warnings:
-        raise RuntimeError(f"User provisioning incomplete: {failed} failures, {warnings} entitlement warnings")
+    if raise_on_failure and (failed or warnings):
+        raise RuntimeError(_user_provisioning_error(failed, warnings))
+    return failed_emails, warnings
+
+
+def _user_provisioning_error(failed: int, warnings: int) -> str:
+    return (
+        f"User provisioning incomplete: {failed} failures, "
+        f"{warnings} entitlement warnings"
+    )
+
+
+# Modes that never read --users-file; every other mode (including the default)
+# requires it. Validation, error text, and help are all derived from this.
+NO_USERS_FILE_MODES = ("--lakebase-only", "--main-only", "--infra-only")
+
+
+def _join_flags(flags: tuple[str, ...], conjunction: str = "or") -> str:
+    if len(flags) <= 2:
+        return f" {conjunction} ".join(flags)
+    return ", ".join(flags[:-1]) + f", {conjunction} {flags[-1]}"
+
+
+def _mode_help(text: str, flag: str) -> str:
+    if flag in NO_USERS_FILE_MODES:
+        return f"{text}; does not take --users-file"
+    return f"{text}; requires --users-file"
+
+
+def _mode_dest(flag: str) -> str:
+    return flag.lstrip("-").replace("-", "_")
 
 
 def main() -> None:
+    no_users_modes = _join_flags(NO_USERS_FILE_MODES)
     parser = argparse.ArgumentParser(
         description="Set up the Databricks State & Local workshop environment.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 examples:
   # Full setup (default, in order) — Lakebase, shared main catalog, users,
   # then participant catalogs:
@@ -1613,7 +1659,7 @@ examples:
   python setup_workshop.py --lakebase-only
 
   # Shared catalog/volume only (grants, uploads tmsis_claims.json, writes
-  # the workshop repo link to /Shared/workshop_repo.txt); no users file needed:
+  # the workshop repo link to /Shared/workshop_repo.txt):
   python setup_workshop.py --main-only
 
   # Participant catalogs only:
@@ -1623,7 +1669,7 @@ examples:
   python setup_workshop.py --users-only --users-file participants.txt
 
   # Infra only — Lakebase + shared main catalog; no users or participant
-  # catalogs (no users file needed):
+  # catalogs:
   python setup_workshop.py --infra-only
 
   # Specify profile:
@@ -1636,9 +1682,11 @@ examples:
   python setup_workshop.py --main-only --profile sl-workshop
 
 Notes:
-  - --users-file is required for every mode except --lakebase-only,
-    --main-only, and --infra-only.
-  - Without --profile, you are prompted to choose one (unless only one exists).
+  - --users-file is required for the default mode, --user-catalogs-only, and
+    --users-only. It is rejected with
+    {no_users_modes}.
+  - Without --profile, you are always prompted to choose a profile, so pass
+    --profile when running non-interactively.
 
 Prerequisites:
   - workshop_setup/medical_providers.parquet (Lab 1.1 Lakebase seed data)
@@ -1657,7 +1705,10 @@ Prerequisites:
         "--users-file",
         "-u",
         metavar="FILE",
-        help="Text file with one user email address per line (# lines ignored)",
+        help=(
+            "Text file with one user email address per line (# lines ignored); "
+            f"not accepted with {no_users_modes}"
+        ),
     )
     parser.add_argument(
         "--catalog",
@@ -1741,49 +1792,58 @@ Prerequisites:
     mode.add_argument(
         "--lakebase-only",
         action="store_true",
-        help="Only create Lakebase project, seed medical_providers, and UC catalog",
+        help=_mode_help(
+            "Only create Lakebase project, seed medical_providers, and UC catalog",
+            "--lakebase-only",
+        ),
     )
     mode.add_argument(
         "--main-only",
         action="store_true",
-        help=(
+        help=_mode_help(
             "Only create the shared catalog, schema, and volume, grant access, "
-            "upload TMSIS JSON, and write the workshop repo link"
+            "upload TMSIS JSON, and write the workshop repo link",
+            "--main-only",
         ),
     )
     mode.add_argument(
         "--user-catalogs-only",
         action="store_true",
-        help=(
+        help=_mode_help(
             "Only create participant catalogs (bronze/silver/gold) from the "
-            "users file; requires --users-file"
+            "users file",
+            "--user-catalogs-only",
         ),
     )
     mode.add_argument(
         "--users-only",
         action="store_true",
-        help="Only provision users from the users file; requires --users-file",
+        help=_mode_help(
+            "Only provision users from the users file", "--users-only"
+        ),
     )
     mode.add_argument(
         "--infra-only",
         action="store_true",
-        help=(
+        help=_mode_help(
             "Create Lakebase and the shared catalog/volume; skips user "
-            "provisioning and participant catalogs"
+            "provisioning and participant catalogs",
+            "--infra-only",
         ),
     )
 
     args = parser.parse_args()
 
-    needs_users_file = not (
-        args.main_only or args.lakebase_only or args.infra_only
+    no_users_mode = next(
+        (f for f in NO_USERS_FILE_MODES if getattr(args, _mode_dest(f))), None
     )
-    if needs_users_file and not args.users_file:
-        parser.error(
-            "--users-file is required unless --lakebase-only, --main-only, "
-            "or --infra-only is specified"
-        )
-    if needs_users_file:
+    if no_users_mode and args.users_file:
+        parser.error(f"{no_users_mode} does not use --users-file; remove it")
+    if not no_users_mode:
+        if not args.users_file:
+            parser.error(
+                f"--users-file is required unless {no_users_modes} is specified"
+            )
         read_participants(args.users_file)
 
     profiles = get_profiles()
@@ -1819,11 +1879,22 @@ Prerequisites:
     else:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
         storage = create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-        provision_users(w, args.users_file)
+        # Keep going past individual user failures so everyone else still gets
+        # a catalog; report the failures once all catalogs are done.
+        failed_users, user_warnings = provision_users(
+            w, args.users_file, raise_on_failure=False
+        )
         create_user_catalogs(
             w, args.users_file, warehouse_id=args.warehouse_id,
             aws_storage=storage, storage_checked=True,
+            skip_emails=failed_users,
         )
+        if failed_users or user_warnings:
+            raise RuntimeError(
+                _user_provisioning_error(len(failed_users), user_warnings)
+                + " (participant catalogs were created for the other users;"
+                " fix the users above and rerun)"
+            )
 
     print("\nWorkshop setup complete.")
 

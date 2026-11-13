@@ -153,6 +153,55 @@ class SetupTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provisioning incomplete"):
                 setup.provision_users(workspace, "users.txt")
 
+    def test_user_failures_can_be_collected(self):
+        workspace = MagicMock()
+        workspace.users.create.side_effect = RuntimeError("permission denied")
+        with patch.object(setup, "read_participants", return_value=["a@example.com"]):
+            self.assertEqual(
+                setup.provision_users(workspace, "users.txt", raise_on_failure=False),
+                (["a@example.com"], 0),
+            )
+
+    def test_failed_users_are_skipped_for_catalogs(self):
+        with patch.object(
+            setup, "read_participants", return_value=["a@example.com", "b@example.com"]
+        ), patch.object(setup, "create_user_catalog") as create:
+            setup.create_user_catalogs(
+                MagicMock(), "users.txt", warehouse_id="wh",
+                storage_checked=True, skip_emails=["A@example.com"],
+            )
+        self.assertEqual([c.args[1] for c in create.call_args_list], ["b@example.com"])
+
+    def test_default_mode_creates_catalogs_before_reporting_user_failures(self):
+        calls = []
+        with patch("sys.argv", ["setup", "-p", "x", "-u", "users.txt"]), patch.object(
+            setup, "read_participants", return_value=["a@example.com"]
+        ), patch.object(setup, "get_profiles", return_value=["x"]), patch.object(
+            setup, "WorkspaceClient"
+        ), patch.object(setup, "setup_lakebase_workshop_source"), patch.object(
+            setup, "create_shared_main_catalog", return_value=None
+        ), patch.object(
+            setup, "provision_users", return_value=(["a@example.com"], 0)
+        ), patch.object(
+            setup, "create_user_catalogs",
+            side_effect=lambda *a, **kw: calls.append(kw["skip_emails"]),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "provisioning incomplete"):
+                setup.main()
+        self.assertEqual(calls, [["a@example.com"]])
+
+    def test_users_file_rules_follow_mode_tuple(self):
+        for flag in setup.NO_USERS_FILE_MODES:
+            with self.subTest(flag=flag), patch(
+                "sys.argv", ["setup", flag, "-u", "users.txt"]
+            ), patch("sys.stderr"):
+                with self.assertRaises(SystemExit):
+                    setup.main()
+        for argv in (["setup"], ["setup", "--users-only"], ["setup", "--user-catalogs-only"]):
+            with self.subTest(argv=argv), patch("sys.argv", argv), patch("sys.stderr"):
+                with self.assertRaises(SystemExit):
+                    setup.main()
+
 
 if __name__ == "__main__":
     unittest.main()
