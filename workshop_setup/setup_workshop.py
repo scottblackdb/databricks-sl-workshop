@@ -1568,13 +1568,15 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
-  # Full setup — Lakebase + shared main catalog + participant catalogs + users:
+  # Full setup (default, in order) — Lakebase, shared main catalog, users,
+  # then participant catalogs:
   python setup_workshop.py --users-file participants.txt
 
   # Lakebase only (project + medical_providers table + UC catalog):
   python setup_workshop.py --lakebase-only
 
-  # Shared catalog/volume only (uploads workshop_setup/tmsis_claims.json):
+  # Shared catalog/volume only (grants, uploads tmsis_claims.json, writes
+  # the workshop repo link to /Shared/workshop_repo.txt); no users file needed:
   python setup_workshop.py --main-only
 
   # Participant catalogs only:
@@ -1583,20 +1585,28 @@ examples:
   # Users only:
   python setup_workshop.py --users-only --users-file participants.txt
 
-  # Infra only — Lakebase + shared + participant catalogs, no user provisioning:
-  python setup_workshop.py --infra-only --users-file participants.txt
+  # Infra only — Lakebase + shared main catalog; no users or participant
+  # catalogs (no users file needed):
+  python setup_workshop.py --infra-only
 
   # Specify profile:
   python setup_workshop.py --profile sl-workshop --users-file participants.txt
 
-  # UC storage when workspace has storage credentials:
+  # If the workspace has UC storage credentials, AWS provisioning runs for the
+  # shared and participant catalogs (--main-only, --infra-only,
+  # --user-catalogs-only, and the default mode) and these variables are required:
   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=...
   python setup_workshop.py --main-only --profile sl-workshop
 
+Notes:
+  - --users-file is required for every mode except --lakebase-only,
+    --main-only, and --infra-only.
+  - Without --profile, you are prompted to choose one (unless only one exists).
+
 Prerequisites:
   - workshop_setup/medical_providers.parquet (Lab 1.1 Lakebase seed data)
+  - workshop_setup/medical_providers.sql (optional; overrides the built-in DDL)
   - workshop_setup/tmsis_claims.json (Lab 1.3 volume upload)
-  - Provider reviews REST endpoint used by Lab 1.2
         """,
     )
 
@@ -1659,14 +1669,18 @@ Prerequisites:
     parser.add_argument(
         "--skip-lakebase-if-exists",
         action="store_true",
-        help="If the Lakebase project already exists, skip create/permission updates",
+        help=(
+            "If the Lakebase project already exists, skip creating it and "
+            "updating its permissions (seeding and UC catalog registration still run)"
+        ),
     )
     parser.add_argument(
         "--warehouse-id",
         metavar="ID",
         help=(
-            "SQL warehouse ID for CREATE CATALOG IF NOT EXISTS when no external "
-            "location is available (default: first warehouse in the workspace)"
+            "SQL warehouse ID used to run CREATE CATALOG IF NOT EXISTS (when the "
+            "workspace has no UC storage credentials) and ALTER CATALOG ... SET "
+            "MANAGED LOCATION statements (default: first warehouse in the workspace)"
         ),
     )
     parser.add_argument(
@@ -1675,7 +1689,8 @@ Prerequisites:
         type=Path,
         default=DEFAULT_TMSIS_LOCAL_PATH,
         help=(
-            "Local TMSIS JSON to upload into the shared volume "
+            "Local TMSIS JSON to upload into the shared volume; skipped if a "
+            "file with the same name is already there "
             f"(default: {DEFAULT_TMSIS_LOCAL_PATH})"
         ),
     )
@@ -1693,36 +1708,42 @@ Prerequisites:
     mode.add_argument(
         "--main-only",
         action="store_true",
-        help="Only create the shared main catalog, volume, and upload TMSIS JSON",
+        help=(
+            "Only create the shared catalog, schema, and volume, grant access, "
+            "upload TMSIS JSON, and write the workshop repo link"
+        ),
     )
     mode.add_argument(
         "--user-catalogs-only",
         action="store_true",
-        help="Only create participant catalogs from the users file",
+        help=(
+            "Only create participant catalogs (bronze/silver/gold) from the "
+            "users file; requires --users-file"
+        ),
     )
     mode.add_argument(
         "--users-only",
         action="store_true",
-        help="Only provision users",
+        help="Only provision users from the users file; requires --users-file",
     )
     mode.add_argument(
         "--infra-only",
         action="store_true",
         help=(
-            "Create Lakebase, shared, and participant Unity Catalog resources, "
-            "skipping user provisioning"
+            "Create Lakebase and the shared catalog/volume; skips user "
+            "provisioning and participant catalogs"
         ),
     )
 
     args = parser.parse_args()
 
     needs_users_file = not (
-        args.main_only or args.users_only or args.lakebase_only
+        args.main_only or args.lakebase_only or args.infra_only
     )
     if needs_users_file and not args.users_file:
         parser.error(
             "--users-file is required unless --lakebase-only, --main-only, "
-            "or --users-only is specified"
+            "or --infra-only is specified"
         )
 
     profiles = get_profiles()
@@ -1755,7 +1776,6 @@ Prerequisites:
     elif args.infra_only:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
         create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
     else:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
         create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
