@@ -137,6 +137,31 @@ class SetupTests(unittest.TestCase):
             "participant_dev",
         ])
 
+    def test_setup_user_keeps_catalog_access_before_transfer(self):
+        workspace = MagicMock()
+        workspace.current_user.me.return_value = SimpleNamespace(user_name="setup@example.com")
+        workspace.catalogs.get.return_value = SimpleNamespace(owner="setup@example.com")
+        workspace.schemas.get.return_value = SimpleNamespace(owner="participant@example.com")
+        calls = []
+        workspace.grants.update.side_effect = lambda **kw: calls.append(("grant", kw["changes"][0]))
+        workspace.catalogs.update.side_effect = lambda **kw: calls.append(("owner", kw["owner"]))
+        setup._transfer_user_catalog_ownership(
+            workspace, "participant_dev", "participant@example.com", ("bronze",)
+        )
+        self.assertEqual([c[0] for c in calls], ["grant", "owner"])
+        change = calls[0][1]
+        self.assertEqual(change.principal, "setup@example.com")
+        self.assertEqual(set(change.add), {setup.Privilege.BROWSE, setup.Privilege.USE_CATALOG})
+
+    def test_unreadable_existing_catalog_is_skipped(self):
+        workspace = MagicMock()
+        workspace.catalogs.get.side_effect = setup.PermissionDenied("no USE CATALOG")
+        with patch.object(setup, "_ensure_catalog") as ensure:
+            setup.create_user_catalog(
+                workspace, "a@example.com", warehouse_id="wh", aws_storage=None
+            )
+        ensure.assert_not_called()
+
     def test_schema_transfer_failure_preserves_catalog_ownership(self):
         workspace = MagicMock()
         workspace.schemas.update.side_effect = RuntimeError("denied")

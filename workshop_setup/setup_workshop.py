@@ -57,7 +57,12 @@ except ImportError:
 try:
     from databricks.sdk import WorkspaceClient
     from databricks.sdk.common.lro import LroOptions
-    from databricks.sdk.errors import AlreadyExists, NotFound, ResourceAlreadyExists
+    from databricks.sdk.errors import (
+        AlreadyExists,
+        NotFound,
+        PermissionDenied,
+        ResourceAlreadyExists,
+    )
     from databricks.sdk.service import iam, postgres
     from databricks.sdk.service.catalog import (
         AwsIamRoleRequest,
@@ -1426,7 +1431,19 @@ def _transfer_user_catalog_ownership(
             error_label=f"set schema '{full_name}' owner to '{owner_email}'",
         )
 
-    # Transfer the parent last: giving it away can remove our USE CATALOG.
+    # Transfer the parent last: giving it away removes our implicit owner
+    # access, so first grant the setup user explicit BROWSE/USE CATALOG or the
+    # catalog vanishes from their Catalog Explorer and later reruns can't read it.
+    setup_user = w.current_user.me().user_name
+    if setup_user and setup_user.lower() != owner_email.lower():
+        _grant_privileges(
+            w,
+            securable_type="catalog",
+            full_name=catalog_name,
+            principal=setup_user,
+            privileges=[Privilege.BROWSE, Privilege.USE_CATALOG],
+            description=f"participant catalog '{catalog_name}' (setup user)",
+        )
     _set_owner_if_needed(
         current_owner=catalog.owner,
         desired_owner=owner_email,
@@ -1450,6 +1467,14 @@ def create_user_catalog(
         existing = w.catalogs.get(name=catalog_name)
     except NotFound:
         existing = None
+    except PermissionDenied:
+        # Exists, but already handed to someone else without leaving us access
+        # (catalogs set up before the setup user kept BROWSE/USE CATALOG).
+        print(
+            f"  [~] catalog '{catalog_name}' exists but is not readable by the "
+            "setup user (ownership likely already transferred); skipping"
+        )
+        return
     if existing and existing.owner and existing.owner.lower() != email.lower():
         raise ValueError(
             f"Catalog '{catalog_name}' belongs to '{existing.owner}', not '{email}'; "
