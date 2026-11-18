@@ -332,7 +332,7 @@ def _grant_lakebase_project_manage_all_account_users(
 def create_lakebase(
     w: WorkspaceClient,
     display_name: str,
-    pg_version: int = 17,
+    pg_version: int = 18,
     *,
     skip_if_exists: bool = False,
 ) -> str:
@@ -595,7 +595,7 @@ def setup_lakebase_workshop_source(
     w: WorkspaceClient,
     *,
     display_name: str = DEFAULT_LAKEBASE_NAME,
-    pg_version: int = 17,
+    pg_version: int = 18,
     postgres_database: str = DEFAULT_LAKEBASE_DATABASE,
     uc_catalog: str = DEFAULT_LAKEBASE_UC_CATALOG,
     parquet_path: Path = DEFAULT_MEDICAL_PROVIDERS_PARQUET,
@@ -1869,10 +1869,10 @@ Prerequisites:
     parser.add_argument(
         "--pg-version",
         type=int,
-        default=17,
-        choices=[16, 17],
+        default=18,
+        choices=[16, 17, 18],
         metavar="VER",
-        help="PostgreSQL major version for Lakebase (16 or 17, default: 17)",
+        help="PostgreSQL major version for Lakebase (16, 17, or 18, default: 18)",
     )
     parser.add_argument(
         "--medical-providers-file",
