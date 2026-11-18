@@ -195,14 +195,11 @@ def _create_idempotent(
     try:
         create_fn()
         print(f"  [+] {created_msg}")
-    except (AlreadyExists, ResourceAlreadyExists):
-        print(f"  [~] {exists_msg}")
     except Exception as e:
         if _is_already_exists(e):
             print(f"  [~] {exists_msg}")
         else:
-            print(f"  [!] {error_label} — {e}")
-            sys.exit(1)
+            raise RuntimeError(f"  [!] {error_label} — {e}") from e
 
 
 def _grant_privileges(
@@ -230,8 +227,7 @@ def _grant_privileges(
             f"  [+] grants on {description} '{full_name}' to '{principal}': {privs}"
         )
     except Exception as e:
-        print(f"  [!] grant on {description} '{full_name}' — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] grant on {description} '{full_name}' — {e}") from e
 
 
 def _normalize_storage_url(url: str) -> str:
@@ -245,8 +241,7 @@ def _client_error_code(exc: ClientError) -> str:
 def get_profiles() -> list[str]:
     cfg_path = Path.home() / ".databrickscfg"
     if not cfg_path.exists():
-        print("Error: ~/.databrickscfg not found. Run 'databricks configure' first.")
-        sys.exit(1)
+        raise RuntimeError("~/.databrickscfg not found. Run 'databricks configure' first.")
     # Databricks treats [DEFAULT] as a regular profile. Disable ConfigParser's
     # special default section so it is included in sections(), even when empty.
     config = configparser.RawConfigParser(default_section="")
@@ -257,9 +252,10 @@ def get_profiles() -> list[str]:
 def select_profile(profiles: list[str], profile_arg: str | None) -> str:
     if profile_arg:
         if profile_arg not in profiles:
-            print(f"Error: profile '{profile_arg}' not found in ~/.databrickscfg")
-            print(f"Available: {', '.join(profiles)}")
-            sys.exit(1)
+            raise ValueError(
+                f"Profile '{profile_arg}' not found in ~/.databrickscfg. "
+                f"Available: {', '.join(profiles)}"
+            )
         return profile_arg
 
     if not profiles:
@@ -279,8 +275,7 @@ def select_profile(profiles: list[str], profile_arg: str | None) -> str:
         except ValueError:
             pass
         except (KeyboardInterrupt, EOFError):
-            print("\nAborted.")
-            sys.exit(1)
+            raise RuntimeError("\nAborted.")
         print(prompt)
 
 
@@ -331,8 +326,7 @@ def _grant_lakebase_project_manage_all_account_users(
             f"group '{ALL_USERS_PRINCIPAL}' (All account users)"
         )
     except Exception as e:
-        print(f"  [!] Lakebase project permissions on '{project_id}' — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] Lakebase project permissions on '{project_id}' — {e}") from e
 
 
 def create_lakebase(
@@ -354,8 +348,7 @@ def create_lakebase(
 
     if exists:
         print(f"\nLakebase project '{display_name}' (id: {project_id}) already exists.")
-        if not skip_if_exists:
-            _grant_lakebase_project_manage_all_account_users(w, project_id)
+        _grant_lakebase_project_manage_all_account_users(w, project_id)
         return project_id
 
     print(
@@ -373,19 +366,13 @@ def create_lakebase(
     )
     try:
         op = w.postgres.create_project(project=project, project_id=project_id)
-    except (AlreadyExists, ResourceAlreadyExists):
-        print(f"  [~] Lakebase project '{project_id}' already exists")
-        if not skip_if_exists:
-            _grant_lakebase_project_manage_all_account_users(w, project_id)
-        return project_id
     except Exception as e:
         if _is_already_exists(e):
             print(f"  [~] Lakebase project '{project_id}' already exists")
             if not skip_if_exists:
                 _grant_lakebase_project_manage_all_account_users(w, project_id)
             return project_id
-        print(f"  Error: {e}")
-        sys.exit(1)
+        raise RuntimeError(f"Create Lakebase project '{project_id}': {e}") from e
 
     print("  Waiting for Lakebase to become ready", end="", flush=True)
     try:
@@ -395,8 +382,7 @@ def create_lakebase(
         print(f"  Ready: {name}")
         _grant_lakebase_project_manage_all_account_users(w, project_id)
     except Exception as e:
-        print(f"\n  Operation ended: {e}")
-        sys.exit(1)
+        raise RuntimeError(f"\n  Operation ended: {e}") from e
     return project_id
 
 
@@ -409,8 +395,7 @@ def _resolve_lakebase_branch(w: WorkspaceClient, project_id: str) -> str:
         w.postgres.list_branches(parent=_lakebase_project_resource_name(project_id))
     )
     if not branches:
-        print(f"Error: no branches found for Lakebase project '{project_id}'")
-        sys.exit(1)
+        raise RuntimeError(f"no branches found for Lakebase project '{project_id}'")
     if len(branches) != 1 or not branches[0].name:
         raise ValueError(f"No default branch for '{project_id}'; cannot choose a branch safely")
     return branches[0].name
@@ -426,27 +411,23 @@ def _resolve_lakebase_endpoint(w: WorkspaceClient, branch: str) -> tuple[str, st
             chosen = endpoint
             break
     if chosen is None or not chosen.name:
-        print(f"Error: no read-write Lakebase endpoint found on branch '{branch}'")
-        sys.exit(1)
+        raise RuntimeError(f"no read-write Lakebase endpoint found on branch '{branch}'")
     host = None
     if chosen.status and chosen.status.hosts:
         host = chosen.status.hosts.host
     if not host:
-        print(f"Error: Lakebase endpoint '{chosen.name}' has no host")
-        sys.exit(1)
+        raise RuntimeError(f"Lakebase endpoint '{chosen.name}' has no host")
     return chosen.name, host
 
 
 def _require_psycopg() -> None:
     if psycopg is None:
-        print("Error: psycopg is required for Lakebase seeding.  pip install 'psycopg[binary]'")
-        sys.exit(1)
+        raise RuntimeError("psycopg is required for Lakebase seeding.  pip install 'psycopg[binary]'")
 
 
 def _require_pyarrow() -> None:
     if pq is None:
-        print("Error: pyarrow is required to load medical_providers.parquet.  pip install pyarrow")
-        sys.exit(1)
+        raise RuntimeError("pyarrow is required to load medical_providers.parquet.  pip install pyarrow")
 
 
 def _connect_lakebase(
@@ -460,8 +441,7 @@ def _connect_lakebase(
     cred = w.postgres.generate_database_credential(endpoint=endpoint_name)
     user = w.current_user.me().user_name
     if not user:
-        print("Error: could not resolve current user for Lakebase connection")
-        sys.exit(1)
+        raise RuntimeError("could not resolve current user for Lakebase connection")
     return psycopg.connect(
         dbname=database,
         user=user,
@@ -493,8 +473,7 @@ def _load_medical_providers_table(
             """
         )
         if cur.fetchone()[0] == 0:
-            print("  [!] table public.medical_providers was not created")
-            sys.exit(1)
+            raise RuntimeError("  [!] table public.medical_providers was not created")
         cur.execute("SELECT COUNT(*) FROM public.medical_providers")
         existing = cur.fetchone()[0]
         if existing and not force_reload:
@@ -513,8 +492,7 @@ def _load_medical_providers_table(
         raise ValueError(f"medical providers parquet is empty: {parquet_path}")
     missing = [c for c in _MEDICAL_PROVIDERS_COLUMNS if c not in table.column_names]
     if missing:
-        print(f"  [!] parquet missing columns: {', '.join(missing)}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] parquet missing columns: {', '.join(missing)}")
     table = table.select(list(_MEDICAL_PROVIDERS_COLUMNS))
 
     cols = ", ".join(_MEDICAL_PROVIDERS_COLUMNS)
@@ -572,8 +550,7 @@ def create_lakebase_uc_catalog(
         if any(k in msg for k in ("not found", "does not exist", "404")):
             existing = None
         else:
-            print(f"  [!] could not check catalog '{catalog_id}' — {e}")
-            sys.exit(1)
+            raise RuntimeError(f"  [!] could not check catalog '{catalog_id}' — {e}") from e
 
     if existing is None:
         try:
@@ -593,8 +570,7 @@ def create_lakebase_uc_catalog(
             if _is_already_exists(e):
                 print(f"  [~] Lakebase UC catalog '{catalog_id}' already exists")
             else:
-                print(f"  [!] create Lakebase UC catalog '{catalog_id}' — {e}")
-                sys.exit(1)
+                raise RuntimeError(f"  [!] create Lakebase UC catalog '{catalog_id}' — {e}") from e
 
     # Also validate after a concurrent create: a name collision is not success.
     registration = w.postgres.get_catalog(name=f"catalogs/{catalog_id}")
@@ -645,8 +621,7 @@ def setup_lakebase_workshop_source(
                 conn, parquet_path, force_reload=force_reload
             )
     except Exception as e:
-        print(f"  [!] Lakebase seed failed — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] Lakebase seed failed — {e}") from e
 
     create_lakebase_uc_catalog(
         w,
@@ -694,8 +669,7 @@ def read_participants(users_file: str) -> list[str]:
 
 def _sql_identifier(name: str, *, label: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
-        print(f"Error: invalid {label} {name!r} for SQL (use letters, numbers, _, -)")
-        sys.exit(1)
+        raise RuntimeError(f"invalid {label} {name!r} for SQL (use letters, numbers, _, -)")
     return f"`{name}`"
 
 
@@ -705,8 +679,7 @@ def _resolve_sql_warehouse_id(w: WorkspaceClient, warehouse_id: str | None) -> s
     for warehouse in w.warehouses.list():
         if warehouse.id:
             return warehouse.id
-    print("Error: no SQL warehouse found; create one or pass --warehouse-id")
-    sys.exit(1)
+    raise RuntimeError("no SQL warehouse found; create one or pass --warehouse-id")
 
 
 def _execute_sql_statement(w: WorkspaceClient, warehouse_id: str, statement: str) -> None:
@@ -726,12 +699,10 @@ def _execute_sql_statement(w: WorkspaceClient, warehouse_id: str, statement: str
         resp = w.statement_execution.get_statement(resp.statement_id)
 
     if resp.status is None:
-        print("  [!] SQL statement execution: missing status")
-        sys.exit(1)
+        raise RuntimeError("  [!] SQL statement execution: missing status")
     if resp.status.state != StatementState.SUCCEEDED:
         err = resp.status.error.as_dict() if resp.status.error else {}
-        print(f"  [!] SQL failed: state={resp.status.state} detail={err}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] SQL failed: state={resp.status.state} detail={err}")
 
 
 def _create_catalog_if_not_exists_sql(
@@ -757,18 +728,15 @@ def _require_aws_credentials() -> None:
     missing = [name for name in _AWS_ENV_VARS if not os.environ.get(name)]
     if not missing:
         return
-    print("Error: AWS environment variables are required for Unity Catalog storage setup.")
-    print("Set the following in your shell, then re-run this script:\n")
-    for name in _AWS_ENV_VARS:
-        marker = "  (missing)" if name in missing else ""
-        print(f"  export {name}=<value>{marker}")
-    sys.exit(1)
+    raise RuntimeError(
+        "AWS environment variables are required for Unity Catalog storage setup. "
+        f"Set these variables and rerun: {', '.join(missing)}"
+    )
 
 
 def _require_boto3() -> None:
     if boto3 is None:
-        print("Error: boto3 is required for AWS provisioning.  pip install boto3")
-        sys.exit(1)
+        raise RuntimeError("boto3 is required for AWS provisioning.  pip install boto3")
 
 
 def _aws_session_from_env() -> "boto3.Session":
@@ -914,8 +882,7 @@ def _ensure_iam_role_policy(
         )
         print(f"  [+] IAM inline policy '{policy_name}' on '{role_name}'")
     except ClientError as e:
-        print(f"  [!] IAM policy '{policy_name}' on '{role_name}' — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] IAM policy '{policy_name}' on '{role_name}' — {e}") from e
 
 
 def _update_iam_trust_external_id(
@@ -966,11 +933,16 @@ def _get_storage_credential_external_id(w: WorkspaceClient, credential_name: str
 def _get_or_create_storage_credential(
     w: WorkspaceClient, credential_name: str, role_arn: str
 ) -> str:
-    external_id = _get_storage_credential_external_id(w, credential_name)
-    if external_id:
+    try:
         credential = w.storage_credentials.get(name=credential_name)
+    except NotFound:
+        credential = None
+    if credential is not None:
         if not credential.aws_iam_role or credential.aws_iam_role.role_arn != role_arn:
             raise ValueError(f"Storage credential '{credential_name}' uses a different IAM role")
+        external_id = _storage_credential_external_id(credential)
+        if not external_id:
+            raise RuntimeError(f"Storage credential '{credential_name}' has no external ID")
         print(f"  [~] storage credential '{credential_name}' (already exists)")
         return external_id
 
@@ -982,8 +954,7 @@ def _get_or_create_storage_credential(
     )
     external_id = _get_storage_credential_external_id(w, credential_name)
     if not external_id:
-        print(f"  [!] storage credential '{credential_name}' — no external ID returned")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] storage credential '{credential_name}' — no external ID returned")
     print(f"  [+] storage credential '{credential_name}'")
     return external_id
 
@@ -1012,8 +983,7 @@ def _validate_storage_credential(
             )
         print(f"  [+] validated storage credential '{credential_name}'")
     except Exception as e:
-        print(f"  [!] storage credential validation — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] storage credential validation — {e}") from e
 
 
 def _get_or_create_external_location(
@@ -1260,12 +1230,11 @@ def _upload_tmsis_claims_json(
 ) -> None:
     """Upload local tmsis_claims.json into the shared Unity Catalog volume."""
     if not local_path.is_file():
-        print(f"  [!] TMSIS source file not found: {local_path}")
-        print(
-            "  Place tmsis_claims.json next to setup_workshop.py "
+        raise FileNotFoundError(
+            f"TMSIS source file not found: {local_path}. "
+            "Place tmsis_claims.json next to setup_workshop.py "
             "(or pass --tmsis-file) before Lab 1.3."
         )
-        sys.exit(1)
 
     file_name = local_path.name
     volume_path = f"/Volumes/{catalog_name}/{schema_name}/{volume_name}/{file_name}"
@@ -1286,8 +1255,7 @@ def _upload_tmsis_claims_json(
             w.files.upload(volume_path, fh, overwrite=True)
         print(f"  [+] uploaded TMSIS data to '{volume_path}'")
     except Exception as e:
-        print(f"  [!] upload TMSIS data to '{volume_path}' — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] upload TMSIS data to '{volume_path}' — {e}") from e
 
 
 def _upload_workshop_repo_link(w: WorkspaceClient) -> None:
@@ -1396,8 +1364,7 @@ def _set_owner_if_needed(
         update_fn()
         print(f"  [+] {created_msg}")
     except Exception as e:
-        print(f"  [!] {error_label} — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] {error_label} — {e}") from e
 
 
 def _transfer_user_catalog_ownership(
@@ -1410,16 +1377,14 @@ def _transfer_user_catalog_ownership(
     try:
         catalog = w.catalogs.get(name=catalog_name)
     except Exception as e:
-        print(f"  [!] could not read catalog '{catalog_name}' to set owner — {e}")
-        sys.exit(1)
+        raise RuntimeError(f"  [!] could not read catalog '{catalog_name}' to set owner — {e}") from e
 
     for schema in schemas:
         full_name = f"{catalog_name}.{schema}"
         try:
             current = w.schemas.get(full_name=full_name)
         except Exception as e:
-            print(f"  [!] could not read schema '{full_name}' to set owner — {e}")
-            sys.exit(1)
+            raise RuntimeError(f"  [!] could not read schema '{full_name}' to set owner — {e}") from e
         _set_owner_if_needed(
             current_owner=current.owner,
             desired_owner=owner_email,
@@ -1486,6 +1451,24 @@ def create_user_catalog(
         else None
     )
     user_schemas = (DEFAULT_BRONZE_SCHEMA, DEFAULT_SILVER_SCHEMA, DEFAULT_GOLD_SCHEMA)
+    if existing and existing.owner:
+        # Ownership was already handed to the participant (possibly by a run
+        # that predates keeping setup-user access). Metastore admins can still
+        # read and grant on it, but need explicit privileges to add schemas.
+        setup_user = w.current_user.me().user_name
+        if setup_user and setup_user.lower() != existing.owner.lower():
+            _grant_privileges(
+                w,
+                securable_type="catalog",
+                full_name=catalog_name,
+                principal=setup_user,
+                privileges=[
+                    Privilege.BROWSE,
+                    Privilege.USE_CATALOG,
+                    Privilege.CREATE_SCHEMA,
+                ],
+                description=f"participant catalog '{catalog_name}' (setup user)",
+            )
     _ensure_catalog(
         w,
         catalog_name,
@@ -1518,14 +1501,19 @@ def create_user_catalog(
 
 def create_user_catalogs(
     w: WorkspaceClient,
-    users_file: str,
+    emails: list[str],
     *,
     warehouse_id: str | None,
     aws_storage: AwsUcStorage | None = None,
     storage_checked: bool = False,
     skip_emails: list[str] | None = None,
-) -> None:
-    emails = read_participants(users_file)
+    raise_on_failure: bool = True,
+) -> list[str]:
+    """Create validated participants' catalogs, continuing past per-user failures.
+
+    Returns the emails whose catalog setup failed. Raises RuntimeError after
+    processing everyone if any failed, unless ``raise_on_failure`` is False.
+    """
     if skip_emails:
         skipped = {e.lower() for e in skip_emails}
         for email in emails:
@@ -1534,20 +1522,42 @@ def create_user_catalogs(
         emails = [e for e in emails if e.lower() not in skipped]
     if not emails:
         print("No email addresses found in file.")
-        return
+        return []
 
     if not storage_checked and _has_storage_credentials(w):
         _require_aws_credentials()
         aws_storage = provision_aws_uc_storage_for_catalog(w, DEFAULT_SHARED_CATALOG)
 
     print(f"\nCreating {len(emails)} participant catalog(s)...")
+    failed_emails: list[str] = []
     for email in emails:
-        create_user_catalog(
-            w,
-            email,
-            warehouse_id=warehouse_id,
-            aws_storage=aws_storage,
-        )
+        try:
+            create_user_catalog(
+                w,
+                email,
+                warehouse_id=warehouse_id,
+                aws_storage=aws_storage,
+            )
+        except Exception as e:
+            print(f"  [!] {email} — {e}; skipping")
+            failed_emails.append(email)
+
+    failed = len(failed_emails)
+    print(
+        f"\n  Participant catalogs: {len(emails) - failed} succeeded, {failed} failed."
+    )
+    if failed_emails:
+        print(f"  Failed: {', '.join(failed_emails)}")
+    if raise_on_failure and failed_emails:
+        raise RuntimeError(_catalog_failure_error(failed_emails))
+    return failed_emails
+
+
+def _catalog_failure_error(failed_emails: list[str]) -> str:
+    return (
+        f"Participant catalog setup failed for {len(failed_emails)} user(s): "
+        f"{', '.join(failed_emails)}"
+    )
 
 
 def _entitlement_values() -> list[iam.ComplexValue]:
@@ -1585,14 +1595,13 @@ def _ensure_entitlements(w: WorkspaceClient, user: iam.User) -> int:
 
 
 def provision_users(
-    w: WorkspaceClient, users_file: str, *, raise_on_failure: bool = True
+    w: WorkspaceClient, emails: list[str], *, raise_on_failure: bool = True
 ) -> tuple[list[str], int]:
-    """Create workspace users and grant entitlements.
+    """Create workspace users and grant entitlements for validated participants.
 
     Returns ``(failed_emails, entitlement_warnings)``. Raises RuntimeError on
     any failure or entitlement warning unless ``raise_on_failure`` is False.
     """
-    emails = read_participants(users_file)
     if not emails:
         print("No email addresses found in file.")
         return [], 0
@@ -1648,6 +1657,108 @@ def _user_provisioning_error(failed: int, warnings: int) -> str:
     )
 
 
+def provision_users_and_catalogs(
+    w: WorkspaceClient,
+    emails: list[str],
+    *,
+    warehouse_id: str | None,
+    aws_storage: AwsUcStorage | None = None,
+    storage_checked: bool = False,
+) -> None:
+    """Provision validated participants, then create each one's catalog.
+
+    Keeps going past individual user failures so everyone else still gets a
+    catalog; raises RuntimeError summarizing all failures at the end.
+    """
+    failed_users, user_warnings = provision_users(
+        w, emails, raise_on_failure=False
+    )
+    failed_catalogs = create_user_catalogs(
+        w, emails, warehouse_id=warehouse_id,
+        aws_storage=aws_storage, storage_checked=storage_checked,
+        skip_emails=failed_users, raise_on_failure=False,
+    )
+    problems = []
+    if failed_users or user_warnings:
+        problems.append(_user_provisioning_error(len(failed_users), user_warnings))
+    if failed_catalogs:
+        problems.append(_catalog_failure_error(failed_catalogs))
+    if problems:
+        raise RuntimeError(
+            "; ".join(problems)
+            + " (the other users were set up; fix the users above and rerun)"
+        )
+
+
+def _is_metastore_admin(owner: str | None, user: iam.User) -> bool:
+    """True if ``user`` is the metastore owner directly or via a group."""
+    if not owner:
+        return False
+    owner = owner.lower()
+    names = {
+        (user.user_name or "").lower(),
+        *((g.display or "").lower() for g in (user.groups or [])),
+    }
+    return owner in names - {""}
+
+
+def ensure_metastore_admin(w: WorkspaceClient, *, assume_yes: bool = False) -> None:
+    """Check the setup user is metastore admin; offer to make them the owner."""
+    print("\nChecking metastore admin...")
+    try:
+        assignment = w.metastores.current()
+    except Exception as e:
+        raise RuntimeError(f"  [!] could not read the workspace metastore — {e}") from e
+
+    metastore_id = assignment.metastore_id
+    label = metastore_id
+    owner = None
+    try:
+        metastore = w.metastores.get(id=metastore_id)
+        label = metastore.name or metastore_id
+        owner = metastore.owner
+    except PermissionDenied:
+        # Reading full metastore details itself requires metastore admin.
+        # Keep the assignment ID so non-admins can reach the ownership prompt.
+        print("  [!] cannot read metastore owner with current permissions")
+    except Exception as e:
+        raise RuntimeError(f"  [!] could not read the workspace metastore — {e}") from e
+
+    me = w.current_user.me()
+    if _is_metastore_admin(owner, me):
+        print(f"  [~] '{me.user_name}' is metastore admin of '{label}' (owner: {owner})")
+        return
+
+    print(
+        f"  [!] '{me.user_name}' is not metastore admin of '{label}' "
+        f"(current owner: {owner or 'unknown'})"
+    )
+    if assume_yes:
+        answer = "y"
+    elif not sys.stdin.isatty():
+        raise RuntimeError(
+            "  [!] cannot prompt (stdin is not a terminal); rerun interactively "
+            "or pass --set-metastore-admin"
+        )
+    else:
+        answer = input(
+            f"  Change the metastore admin of '{label}' from '{owner or 'unknown'}' to "
+            f"'{me.user_name}'? [y/N]: "
+        ).strip().lower()
+
+    if answer not in ("y", "yes"):
+        print(
+            "  [~] leaving metastore admin unchanged; catalog creation, grants, "
+            "and ownership transfers may fail"
+        )
+        return
+    try:
+        w.metastores.update(id=metastore_id, owner=me.user_name)
+    except Exception as e:
+        raise RuntimeError(f"  [!] change metastore admin to '{me.user_name}' — {e}") from e
+    print(f"  [+] metastore '{label}' admin changed from '{owner or 'unknown'}' to '{me.user_name}'")
+
+
 # Modes that never read --users-file; every other mode (including the default)
 # requires it. Validation, error text, and help are all derived from this.
 NO_USERS_FILE_MODES = ("--lakebase-only", "--main-only", "--infra-only")
@@ -1687,10 +1798,7 @@ examples:
   # the workshop repo link to /Shared/workshop_repo.txt):
   python setup_workshop.py --main-only
 
-  # Participant catalogs only:
-  python setup_workshop.py --user-catalogs-only --users-file participants.txt
-
-  # Users only:
+  # Users and their participant catalogs only (no Lakebase or shared catalog):
   python setup_workshop.py --users-only --users-file participants.txt
 
   # Infra only — Lakebase + shared main catalog; no users or participant
@@ -1702,16 +1810,18 @@ examples:
 
   # If the workspace has UC storage credentials, AWS provisioning runs for the
   # shared and participant catalogs (--main-only, --infra-only,
-  # --user-catalogs-only, and the default mode) and these variables are required:
+  # --users-only, and the default mode) and these variables are required:
   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=...
   python setup_workshop.py --main-only --profile sl-workshop
 
 Notes:
-  - --users-file is required for the default mode, --user-catalogs-only, and
-    --users-only. It is rejected with
-    {no_users_modes}.
+  - --users-file is required for the default mode and --users-only. It is
+    rejected with {no_users_modes}.
   - Without --profile, you are always prompted to choose a profile, so pass
     --profile when running non-interactively.
+  - Every mode first checks that you are the metastore admin. If you aren't, you are asked whether to make yourself the metastore
+    owner. Pass --set-metastore-admin to skip the question (required when
+    running non-interactively).
 
 Prerequisites:
   - workshop_setup/medical_providers.parquet (Lab 1.1 Lakebase seed data)
@@ -1813,6 +1923,14 @@ Prerequisites:
         action="store_true",
         help="Do not upload tmsis_claims.json into the shared volume",
     )
+    parser.add_argument(
+        "--set-metastore-admin",
+        action="store_true",
+        help=(
+            "If you are not the metastore admin, make yourself the metastore "
+            "owner without prompting (needed when running non-interactively)"
+        ),
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--lakebase-only",
@@ -1832,19 +1950,12 @@ Prerequisites:
         ),
     )
     mode.add_argument(
-        "--user-catalogs-only",
-        action="store_true",
-        help=_mode_help(
-            "Only create participant catalogs (bronze/silver/gold) from the "
-            "users file",
-            "--user-catalogs-only",
-        ),
-    )
-    mode.add_argument(
         "--users-only",
         action="store_true",
         help=_mode_help(
-            "Only provision users from the users file", "--users-only"
+            "Only provision users from the users file and create their "
+            "participant catalogs (bronze/silver/gold)",
+            "--users-only",
         ),
     )
     mode.add_argument(
@@ -1864,18 +1975,19 @@ Prerequisites:
     )
     if no_users_mode and args.users_file:
         parser.error(f"{no_users_mode} does not use --users-file; remove it")
-    if not no_users_mode:
-        if not args.users_file:
-            parser.error(
-                f"--users-file is required unless {no_users_modes} is specified"
-            )
-        read_participants(args.users_file)
+    if not no_users_mode and not args.users_file:
+        parser.error(
+            f"--users-file is required unless {no_users_modes} is specified"
+        )
+    emails = read_participants(args.users_file) if not no_users_mode else []
 
     profiles = get_profiles()
     profile = select_profile(profiles, args.profile)
     print(f"Profile: {profile}")
 
     w = WorkspaceClient(profile=profile)
+    # Every mode creates or modifies UC catalogs.
+    ensure_metastore_admin(w, assume_yes=args.set_metastore_admin)
     lakebase_kwargs = {
         "display_name": args.lakebase_name,
         "pg_version": args.pg_version,
@@ -1890,36 +2002,20 @@ Prerequisites:
         "skip_tmsis_upload": args.skip_tmsis_upload,
     }
 
-    if args.users_only:
-        provision_users(w, args.users_file)
-    elif args.lakebase_only:
+    run_lakebase = not (args.users_only or args.main_only)
+    run_shared = not (args.users_only or args.lakebase_only)
+    run_users = not no_users_mode
+
+    if run_lakebase:
         setup_lakebase_workshop_source(w, **lakebase_kwargs)
-    elif args.main_only:
-        create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-    elif args.user_catalogs_only:
-        create_user_catalogs(w, args.users_file, warehouse_id=args.warehouse_id)
-    elif args.infra_only:
-        setup_lakebase_workshop_source(w, **lakebase_kwargs)
-        create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-    else:
-        setup_lakebase_workshop_source(w, **lakebase_kwargs)
+    storage = None
+    if run_shared:
         storage = create_shared_main_catalog(w, catalog_name=args.catalog, **uc_kwargs)
-        # Keep going past individual user failures so everyone else still gets
-        # a catalog; report the failures once all catalogs are done.
-        failed_users, user_warnings = provision_users(
-            w, args.users_file, raise_on_failure=False
+    if run_users:
+        provision_users_and_catalogs(
+            w, emails, warehouse_id=args.warehouse_id,
+            aws_storage=storage, storage_checked=run_shared,
         )
-        create_user_catalogs(
-            w, args.users_file, warehouse_id=args.warehouse_id,
-            aws_storage=storage, storage_checked=True,
-            skip_emails=failed_users,
-        )
-        if failed_users or user_warnings:
-            raise RuntimeError(
-                _user_provisioning_error(len(failed_users), user_warnings)
-                + " (participant catalogs were created for the other users;"
-                " fix the users above and rerun)"
-            )
 
     print("\nWorkshop setup complete.")
 
